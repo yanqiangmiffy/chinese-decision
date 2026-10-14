@@ -7,8 +7,8 @@ name = "chinese-decision"
 version = "0.1.0"
 description = "Chinese probabilistic decision model: one forward pass, straight to candidate probabilities"
 readme = "README_EN.md"
-license = "MIT"
-license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+license = "MIT AND Apache-2.0"
+license-files = ["LICENSE", "LICENSES/Apache-2.0.txt", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.8",

@@ -137,7 +137,7 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 |---|---|---|
 | Backbone | mmBERT-base encoder + decision Transformer (about 322M) | Qwen3.5-0.8B decoder + LoRA |
 | Candidate scoring | Shared MLP over candidate-marker positions | Last-position logits of candidate letters |
-| Objective | Cross-entropy + RLCD policy-gradient term | Cross-entropy against the candidate distribution |
+| Objective | Cross-entropy + RLCD policy-gradient term | Cross-entropy against the candidate distribution (RLCD optional, not used in the released results) |
 | Training | General pre-training, then three separately fine-tuned specialists | All four domains mixed into one model |
 
 ### Results Across Training
@@ -354,7 +354,7 @@ python scripts/verify_export.py --url http://127.0.0.1:8787
 | Base model | Qwen3.5-0.8B (text backbone) |
 | Fine-tuning | LoRA, r = 32, α = 64, dropout = 0.05 |
 | LoRA targets | Full attention `q/k/v/o_proj`, linear attention `in_proj_qkv/z/a/b` and `out_proj`, MLP `gate/up/down_proj` |
-| Loss | Cross-entropy against the candidate distribution (soft labels; hard labels are the one-hot case) |
+| Loss | Cross-entropy against the candidate distribution (soft labels; hard labels are the one-hot case); optional RLCD term, off by default |
 | Optimizer | AdamW, lr = 1e-4, 100-step linear warmup, then cosine decay to 10% of peak |
 | Global batch | Each step accumulates at least 1,024 decisions; each micro-batch holds at most 262,144 padded tokens and shrinks automatically for long inputs |
 | Max length | 16,384 tokens |
@@ -388,6 +388,31 @@ The defaults of `scripts/train.py` are the release configuration in the table ab
 
 In the run directory, `last/` is the resume point, `best/` is the best adapter on validation, and `final/` is the adapter after the last step. The exported model directory contains the merged weights, `decision_config.json` (calibrated temperature and limits), the training config and summary, and the base model's `LICENSE`.
 
+### Optional: RLCD Objective
+
+`--rlcd` adds Chinese-Jev's RLCD term (a policy gradient over a proper-scoring-rule reward) to the distribution cross-entropy. It is ported from the [official Chinese-Jev code](https://github.com/gulucaptain/Chinese-Jev) and reproduces its results bit for bit. **It is off by default; none of the results on this page use RLCD.**
+
+Each training step perturbs the candidate logits with several zero-mean Gaussian draws, scores every perturbed distribution with "log score + 0.75 × spherical score − RPS" (RPS applies to `score` questions only), and pushes the logits toward the perturbations that score above their group's average. RPS penalizes errors more the further they are from the correct level; it is the only term that knows level order, so `score` questions are the most likely to benefit.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `--rlcd` | off | Add the RLCD term to the cross-entropy, weighted 1:1 |
+| `--rlcd-group-size` | 4 | Perturbations per decision (at least 2) |
+| `--rlcd-sigma-start` | 0.4 | Logit noise scale at the start of training |
+| `--rlcd-sigma-end` | 0.1 | Noise scale at the end, annealed linearly over training progress |
+
+- **Difference from the original**: Chinese-Jev anneals σ per epoch (four epochs: 0.4 / 0.3 / 0.2 / 0.1). This project trains for one epoch, so σ is annealed linearly over training progress instead. σ is noise added directly to the logits, and an LLM's letter logits may have a different scale from Chinese-Jev's scoring head, so the defaults are only a starting point.
+- **Config and resuming**: with `--rlcd`, `config.json` records the RLCD settings and `training_algorithm` gets a `+rlcd` suffix, so cross-entropy runs and RLCD runs cannot resume each other. Without it, the config is exactly as before and existing runs resume normally.
+- **Logs**: each step also reports `ce`, `rlcd`, `reward`, and `sigma`.
+
+**Ablation**: start a new run from scratch with the same arguments plus `--rlcd`. Both runs share the data order, validation set, and LoRA initialization; only the objective differs.
+
+```bash
+torchrun --standalone --nproc_per_node=4 scripts/train.py --out runs/cj-ddp-rlcd --rlcd
+```
+
+Do not pass `--max-steps`, which would compress the learning-rate and σ schedules and make the runs incomparable. Stop after the validation at step 1000 or 2000 and compare both runs at the same step (each validation writes `latest_metrics.json`, including per-type results), focusing on `type:score`.
+
 ## Benchmarking
 
 ```bash
@@ -411,6 +436,7 @@ chinese-decision/
 │   ├── data.py             #   data sharding, streaming mixing, token batching
 │   ├── model.py            #   model loading and candidate-letter logits
 │   ├── training.py         #   validation, LoRA targets, checkpoint helpers
+│   ├── rlcd.py             #   optional RLCD training term (ported from Chinese-Jev)
 │   ├── metrics.py          #   validation and CJ-Bench metrics
 │   ├── api.py              #   decision response format and checks
 │   └── utils.py            #   logging, atomic writes, SHA256
@@ -426,6 +452,7 @@ chinese-decision/
 ├── examples/request.json   # Example request
 ├── pyproject.toml
 ├── LICENSE
+├── LICENSES/               # Full texts of third-party licenses
 └── THIRD_PARTY_NOTICES.md
 ```
 
@@ -447,7 +474,7 @@ python -m unittest discover -s tests
 
 ## Acknowledgements
 
-- [Chinese-Jev](https://arxiv.org/abs/2609.36965): CJ-Dataset, CJ-Bench, and the baseline results used in our comparison.
+- [Chinese-Jev](https://arxiv.org/abs/2609.36965): CJ-Dataset, CJ-Bench, the baseline results used in our comparison, and the [reference implementation](https://github.com/gulucaptain/Chinese-Jev) of the RLCD term (Apache-2.0).
 - [n4ze3m/hmm](https://github.com/n4ze3m/hmm): option-letter decision objective, LoRA workflow, candidate formatting, and System One response conventions (MIT).
 - [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B): base model (Apache-2.0).
 
@@ -455,6 +482,7 @@ python -m unittest discover -s tests
 
 - This project's code is released under the [MIT License](LICENSE).
 - Portions adapted from hmm are also under the MIT License; the original notice is in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md).
+- `decision/rlcd.py` is adapted from Chinese-Jev under Apache-2.0; the full license text is in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
 - The base model Qwen3.5-0.8B is under Apache-2.0; exported model directories keep its original `LICENSE`.
 - CJ-Dataset and CJ-Bench licenses are source-specific (some sources are non-commercial). This project grants no additional redistribution rights.
 

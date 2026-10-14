@@ -137,7 +137,7 @@ B: {key₂} — {描述₂}
 |---|---|---|
 | 骨干网络 | mmBERT-base 编码器 + 决策 Transformer（约 322M） | Qwen3.5-0.8B 解码器 + LoRA |
 | 候选打分 | 在候选标记位置上用共享 MLP 打分 | 读取末位候选字母的 logits |
-| 训练目标 | 交叉熵 + RLCD 策略梯度项 | 候选分布交叉熵 |
+| 训练目标 | 交叉熵 + RLCD 策略梯度项 | 候选分布交叉熵（RLCD 可选，发布结果未使用） |
 | 训练方式 | 先做通用预训练，再分别微调三个领域专用模型 | 四个领域混合训练，单一模型 |
 
 ### 不同训练阶段的结果
@@ -354,7 +354,7 @@ python scripts/verify_export.py --url http://127.0.0.1:8787
 | 基础模型 | Qwen3.5-0.8B（文本主干） |
 | 微调方式 | LoRA，r = 32，α = 64，dropout = 0.05 |
 | LoRA 目标层 | 全注意力 `q/k/v/o_proj`、线性注意力 `in_proj_qkv/z/a/b`、`out_proj`、MLP `gate/up/down_proj` |
-| 损失函数 | 候选分布交叉熵（软标签；硬标签为其 one-hot 特例） |
+| 损失函数 | 候选分布交叉熵（软标签；硬标签为其 one-hot 特例）；RLCD 项可选，默认关闭 |
 | 优化器 | AdamW，lr = 1e-4，前 100 步线性预热，之后余弦衰减至峰值的 10% |
 | 全局 batch | 每步累积至少 1,024 条决策；每个 micro-batch 在 padding 后最多 262,144 tokens，长样本自动减小 micro-batch |
 | 最大长度 | 16,384 tokens |
@@ -388,6 +388,31 @@ python scripts/finalize.py --run runs/cj-ddp --out models/chinese-decision-0.8b
 
 训练目录中，`last/` 是断点恢复点，`best/` 是验证集上最优的 adapter，`final/` 是最后一步的 adapter。导出的模型目录包含合并权重、`decision_config.json`（校准温度等）、训练配置与摘要，以及基础模型的 `LICENSE`。
 
+### 可选：RLCD 训练目标
+
+`--rlcd` 会在分布交叉熵之外加入 Chinese-Jev 的 RLCD 项（基于适当评分规则奖励的策略梯度）。实现移植自 [Chinese-Jev 官方代码](https://github.com/gulucaptain/Chinese-Jev)，计算结果与原实现逐位一致。**默认关闭，本页发布的所有结果都没有使用 RLCD。**
+
+每个训练步对候选项 logits 做若干组零均值高斯扰动，用"对数得分 + 0.75 × 球面得分 − RPS"给每个扰动后的分布打分（RPS 只对 `score` 题生效），再把 logits 推向得分高于同组平均的扰动方向。RPS 让离正确等级越远的错误扣分越多，是唯一考虑等级顺序的项，因此最可能帮助 `score` 题。
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--rlcd` | 关闭 | 开启 RLCD 项，与交叉熵按 1:1 相加 |
+| `--rlcd-group-size` | 4 | 每道题的扰动组数（至少为 2） |
+| `--rlcd-sigma-start` | 0.4 | 训练开始时 logits 噪声的大小 |
+| `--rlcd-sigma-end` | 0.1 | 训练结束时的噪声大小，按训练进度线性退火 |
+
+- **与原实现的差异**：Chinese-Jev 按 epoch 退火 σ（训练 4 个 epoch，依次为 0.4 / 0.3 / 0.2 / 0.1）；本项目只训练 1 个 epoch，因此改为按训练进度线性退火。σ 是直接加在 logits 上的噪声，大模型字母 logits 的量级可能与 Chinese-Jev 打分头不同，默认值只是起点。
+- **配置与续训**：开启后 `config.json` 会记录 RLCD 参数，`training_algorithm` 带 `+rlcd` 后缀，交叉熵运行和 RLCD 运行不能互相续训。不开启时配置与之前完全一致，已有运行照常续训。
+- **日志**：每步额外输出 `ce`、`rlcd`、`reward` 和 `sigma`。
+
+**对照实验**：用相同参数加 `--rlcd` 从头开一个新运行。两个运行的数据顺序、验证集和 LoRA 初始化都相同，只有训练目标不同。
+
+```bash
+torchrun --standalone --nproc_per_node=4 scripts/train.py --out runs/cj-ddp-rlcd --rlcd
+```
+
+不要加 `--max-steps`，否则学习率和 σ 的调度会被压缩，与基线不可比。在 step 1000 或 2000 的验证完成后停止，对比两个运行同一步的验证集指标（每次验证都会写入 `latest_metrics.json`，包含分题型结果），重点看 `type:score`。
+
 ## 评测
 
 ```bash
@@ -411,6 +436,7 @@ chinese-decision/
 │   ├── data.py             #   数据分片、流式混合、按 token 分 batch
 │   ├── model.py            #   模型加载与候选字母 logits
 │   ├── training.py         #   验证评估、LoRA 目标层、检查点工具
+│   ├── rlcd.py             #   可选 RLCD 训练项（移植自 Chinese-Jev）
 │   ├── metrics.py          #   验证集指标与 CJ-Bench 指标
 │   ├── api.py              #   决策响应格式与校验
 │   └── utils.py            #   日志、原子写入、SHA256
@@ -426,6 +452,7 @@ chinese-decision/
 ├── examples/request.json   # 请求示例
 ├── pyproject.toml
 ├── LICENSE
+├── LICENSES/               # 第三方许可证全文
 └── THIRD_PARTY_NOTICES.md
 ```
 
@@ -447,7 +474,7 @@ python -m unittest discover -s tests
 
 ## 致谢
 
-- [Chinese-Jev](https://arxiv.org/abs/2609.36965)：CJ-Dataset、CJ-Bench 以及本文对比所用的基线结果。
+- [Chinese-Jev](https://arxiv.org/abs/2609.36965)：CJ-Dataset、CJ-Bench、本文对比所用的基线结果，以及 RLCD 训练项的[参考实现](https://github.com/gulucaptain/Chinese-Jev)（Apache-2.0）。
 - [n4ze3m/hmm](https://github.com/n4ze3m/hmm)：选项字母决策目标、LoRA 流程、候选项格式与 System One 响应约定（MIT）。
 - [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)：基础模型（Apache-2.0）。
 
@@ -455,6 +482,7 @@ python -m unittest discover -s tests
 
 - 本项目代码以 [MIT 许可证](LICENSE) 发布。
 - 改编自 hmm 的部分同样遵循 MIT 许可证，原始版权声明见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
+- `decision/rlcd.py` 改编自 Chinese-Jev，遵循 Apache-2.0，许可证全文见 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。
 - 基础模型 Qwen3.5-0.8B 遵循 Apache-2.0，导出的模型目录会保留其原始 `LICENSE`。
 - CJ-Dataset 与 CJ-Bench 的许可按数据来源分别适用（部分来源为非商业许可），本项目不授予任何额外的再分发权限。
 

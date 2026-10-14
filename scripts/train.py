@@ -23,6 +23,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from decision.data import DOMAINS, FULL_TRAIN_DECISIONS, prepared_examples, token_batches, validation_items
 from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
+from decision.rlcd import rlcd_loss, rlcd_sigma
 from decision.schema import MAX_LENGTH, PROMPT_VERSION
 from decision.training import LORA_TARGETS, evaluate, replace_directory, with_last
 from decision.utils import log
@@ -30,6 +31,9 @@ from decision.utils import log
 # Stored in config.json. --resume compares every config key, so renaming or adding
 # arguments (or changing this tag) makes existing runs impossible to resume.
 TRAINING_ALGORITHM = "ddp-record-mean-v2-shapes64"
+RESUME_IGNORED = {"resume", "log_every", "world_size"}
+# Recorded only when --rlcd is on, so cross-entropy-only runs keep their original config.
+RLCD_ARGS = ("rlcd", "rlcd_group_size", "rlcd_sigma_start", "rlcd_sigma_end")
 VALIDATION_BATCH_SIZE, VALIDATION_TOKEN_BUDGET = 32, 16384
 
 
@@ -54,13 +58,34 @@ def parse_args(argv=None):
     parser.add_argument("--lora-r", type=int, default=32)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--resume", action="store_true")
-    return parser.parse_args(argv)
+    rlcd = parser.add_argument_group("RLCD", "optional policy-gradient term over a proper-scoring-rule reward "
+                                             "(Chinese-Jev); off by default")
+    rlcd.add_argument("--rlcd", action="store_true", help="add the RLCD term to the distribution cross-entropy")
+    rlcd.add_argument("--rlcd-group-size", type=int, default=4, help="perturbations per decision")
+    rlcd.add_argument("--rlcd-sigma-start", type=float, default=0.4, help="logit noise scale at the start of training")
+    rlcd.add_argument("--rlcd-sigma-end", type=float, default=0.1, help="noise scale at the end, annealed linearly")
+    args = parser.parse_args(argv)
+    if args.rlcd and (args.rlcd_group_size < 2 or min(args.rlcd_sigma_start, args.rlcd_sigma_end) <= 0):
+        parser.error("--rlcd needs --rlcd-group-size >= 2 and positive sigmas")
+    return args
 
 
 def run_config(args, world_size, data_revision):
-    return vars(args) | {"world_size": world_size, "domains": list(DOMAINS), "prompt_version": PROMPT_VERSION,
-                         "batch_size": args.global_batch_size, "training_algorithm": TRAINING_ALGORITHM,
-                         "data_revision": data_revision}
+    config = vars(args) | {"world_size": world_size, "domains": list(DOMAINS), "prompt_version": PROMPT_VERSION,
+                           "batch_size": args.global_batch_size, "training_algorithm": TRAINING_ALGORITHM,
+                           "data_revision": data_revision}
+    if args.rlcd:
+        config["training_algorithm"] += "+rlcd"
+    else:
+        for key in RLCD_ARGS:
+            del config[key]
+    return config
+
+
+def resume_conflicts(old_config, config):
+    """Config keys whose values differ between a saved run and the current arguments."""
+    return sorted(k for k in old_config.keys() | config.keys()
+                  if k not in RESUME_IGNORED and old_config.get(k) != config.get(k))
 
 
 def init_distributed():
@@ -93,10 +118,9 @@ def main():
         if cfg.exists() and not args.resume:
             raise ValueError("run exists; use --resume or another output directory")
         if args.resume:
-            old_config = json.loads(cfg.read_text())
-            ignored = {"resume", "log_every", "world_size"}
-            if any(old_config.get(k) != config.get(k) for k in old_config.keys() | config.keys() if k not in ignored):
-                raise ValueError("resume requires the original distributed configuration")
+            conflicts = resume_conflicts(json.loads(cfg.read_text()), config)
+            if conflicts:
+                raise ValueError(f"resume requires the original distributed configuration; differs in {conflicts}")
         else:
             cfg.write_text(json.dumps(config, indent=2))
     dist.barrier()
@@ -160,6 +184,7 @@ def main():
         log("training_start", nominal_decisions=total, world_size=world, global_batch_size=args.global_batch_size,
             global_token_budget=args.token_budget, config=config)
     started, recent_sum, recent_n, accumulated = time.time(), 0., 0, 0
+    recent_rlcd = [0., 0., 0.] if args.rlcd else []  # cross-entropy, RLCD term, reward; summed over records
     last_stream_stats = Counter()
 
     def checkpoint(epoch, batches_done):
@@ -233,6 +258,12 @@ def main():
                 logits, targets = forward_batch(model, tokenizer, letters, local_batch)
                 # Hard labels are one-hot special cases of the same distribution cross-entropy.
                 loss = -(targets * logits.log_softmax(-1)).sum(-1).mean()
+                if args.rlcd:
+                    sigma = rlcd_sigma(args.rlcd_sigma_start, args.rlcd_sigma_end, fraction)
+                    rl, reward = rlcd_loss(logits, targets, local_batch, sigma, args.rlcd_group_size)
+                    for i, value in enumerate((loss, rl, reward)):
+                        recent_rlcd[i] += value.item() * real_count
+                    loss = loss + rl
                 if not torch.isfinite(loss):
                     raise FloatingPointError("non-finite distributed loss")
                 # Weight by real records so a long single-record micro-batch is not over-weighted.
@@ -255,16 +286,21 @@ def main():
             optimizer.zero_grad(set_to_none=True)
             step += 1
             if step == 1 or step % args.log_every == 0 or resume_checkpoint_pending:
-                sums = torch.tensor([recent_sum, recent_n], dtype=torch.float64, device=device)
+                sums = torch.tensor([recent_sum, recent_n, *recent_rlcd], dtype=torch.float64, device=device)
                 dist.all_reduce(sums)
                 peaks = [None] * world
                 dist.all_gather_object(peaks, round(torch.cuda.max_memory_allocated(device) / 1e9, 3))
                 if rank == 0:
+                    parts = {}
+                    if args.rlcd:
+                        parts = {"ce": float(sums[2] / sums[1]), "rlcd": float(sums[3] / sums[1]),
+                                 "reward": float(sums[4] / sums[1]), "sigma": sigma}
                     log("step", step=step, loss=float(sums[0] / sums[1]), examples_seen=examples_seen,
                         seconds=round(time.time() - started, 2), batch_size=accumulated,
                         micro_batch_size=len(global_batch), world_size=world,
-                        gpu_peak_gb=peaks, lr=optimizer.param_groups[0]["lr"], grad_norm=float(grad_norm))
+                        gpu_peak_gb=peaks, lr=optimizer.param_groups[0]["lr"], grad_norm=float(grad_norm), **parts)
                 recent_sum, recent_n = 0., 0
+                recent_rlcd = [0.] * len(recent_rlcd)
             accumulated = 0
             terminal = bool(args.max_steps and step >= args.max_steps)
             if step % args.eval_every == 0 or terminal:

@@ -6,7 +6,7 @@ from unittest import mock
 import torch
 
 from decision.training import evaluate, replace_directory, with_last
-from scripts.train import parse_args, run_config
+from scripts.train import parse_args, resume_conflicts, run_config
 
 # Keys and values of the released run's config.json. --resume compares every key, so
 # changing this set or these defaults makes existing runs impossible to resume.
@@ -56,6 +56,19 @@ class ResumeCompatibilityTests(unittest.TestCase):
         ignored = {"resume", "log_every", "world_size", "data_revision"}
         self.assertEqual(set(config) - ignored, set(RELEASED_RUN))
         self.assertEqual({k: config[k] for k in RELEASED_RUN}, RELEASED_RUN)
+
+    def test_rlcd_runs_are_recorded_and_never_resume_as_cross_entropy_runs(self):
+        plain = run_config(parse_args([]), world_size=4, data_revision="r")
+        rlcd = run_config(parse_args(["--rlcd", "--rlcd-sigma-end", ".2"]), world_size=4, data_revision="r")
+        self.assertEqual(rlcd["training_algorithm"], RELEASED_RUN["training_algorithm"] + "+rlcd")
+        self.assertEqual((rlcd["rlcd_group_size"], rlcd["rlcd_sigma_start"], rlcd["rlcd_sigma_end"]), (4, .4, .2))
+        self.assertIn("training_algorithm", resume_conflicts(plain, rlcd))
+        self.assertIn("rlcd_sigma_end", resume_conflicts(plain, rlcd))
+        self.assertEqual(resume_conflicts(plain, run_config(parse_args(["--log-every", "1"]), 2, "r")), [])
+
+    def test_invalid_rlcd_settings_are_rejected(self):
+        with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+            parse_args(["--rlcd", "--rlcd-group-size", "1"])
 
 
 if __name__ == "__main__":

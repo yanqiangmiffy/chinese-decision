@@ -31,6 +31,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## gulucaptain/Chinese-Jev
+
+`decision/rlcd.py` (the optional `--rlcd` training term) is adapted from
+`src/chinese_jev/modeling.py` (`proper_reward`) and `src/chinese_jev/train.py`
+(`decision_loss`) of [gulucaptain/Chinese-Jev](https://github.com/gulucaptain/Chinese-Jev),
+revision `aed6193be5697488c8d0c6a77cc0c7e297329e61`, by the Chinese-Jev authors,
+licensed under the Apache License, Version 2.0; a copy is in
+[`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt). The changes are listed at the top
+of `decision/rlcd.py`: it reads this project's option-letter logits and batch items,
+returns only the RLCD term, and defaults the spherical weight to the value Chinese-Jev
+trains with.
+
 ## Qwen3.5-0.8B
 
 Base model: [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B), licensed
