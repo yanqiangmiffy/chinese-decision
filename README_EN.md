@@ -140,6 +140,25 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 | Objective | Cross-entropy + RLCD policy-gradient term | Cross-entropy against the candidate distribution |
 | Training | General pre-training, then three separately fine-tuned specialists | All four domains mixed into one model |
 
+### Results Across Training
+
+The three best checkpoints selected in turn by validation distribution NLL during the same run, each evaluated on the full CJ-Bench test set under the same protocol (uncalibrated, all 307,900 decisions). The last two rows are quoted from the Chinese-Jev paper for reference.
+
+| Checkpoint | Progress | Val. NLL ↓ | General ACC ↑ | Medical ACC ↑ | Legal ACC ↑ | Finance ACC ↑ | Specialized avg. ACC ↑ | Specialized avg. ECE ↓ | Overall ECE ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| step 2000 | 19.8% | 0.739 | 69.04 | 86.78 | 54.07 | 64.17 | 68.34 | 2.73 | 1.63 |
+| step 3000 | ~30% | 0.691 | 70.26 | 87.22 | 58.93 | 68.67 | 71.61 | 1.75 | 1.25 |
+| **step 5000 (current)** | ~50% | 0.676 | 70.90 | 87.89 | 63.37 | 71.17 | 74.14 | 1.49 | 0.84 |
+| *Reference: Chinese-Jev (G / S)* | — | — | 69.20 | 87.65 | 60.10 | 64.72 | 70.82 | 12.08 | — |
+| *Reference: Jev* | — | — | 68.35 | 84.29 | 68.35 | 78.39 | 77.01 | 5.57 | — |
+
+> Progress is the share of one epoch (13,048,000 decisions) trained so far; steps 3000 and 5000 are estimated from the average throughput up to step 2000. For Chinese-Jev, the general domain uses the General model and the specialized domains use the three specialists (S).
+
+- **Steady gains in every domain**: from step 2000 to step 5000, legal improves by 9.30 points, finance by 7.00, general by 1.86, and medical by 1.11.
+- **Ahead of Chinese-Jev-S from step 3000 on**: specialized-domain average accuracy rises from 68.34% to 74.14%, and the gap to Jev (77.01%) narrows from 8.67 to 2.87 points.
+- **Calibration improves with training**: without temperature calibration, specialized-domain average ECE falls from 2.73% to 1.49%, and overall ECE from 1.63% to 0.84%.
+- The drop in validation NLL moves in the same direction as the test-set gains.
+
 ### Full Results
 
 <details>
