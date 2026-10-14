@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+.venv/
+
+# Models, data, and run outputs
+models/
+datasets/
+runs/
+reports/
+logs/
+*.log
+
+# Personal launchers, server tools, and notes (see README: local/ is not part of the project)
+local/
+.transfer/
+assets/
+data/
+
+# Editors and agents
+.idea/
+.workbuddy
+.jbeval
+
+# SSH credentials and local connection settings
+.ssh/
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+*.pem
+*.key
+ssh_config
+ssh_config.local

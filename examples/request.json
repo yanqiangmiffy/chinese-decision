@@ -1,0 +1,8 @@
+{
+  "state": "客户留言：付款后一直没有收到发票，我已经催了三次，今天必须拿到。",
+  "questions": {
+    "urgent": {"type": "noul", "instructions": "客户是否表达了紧迫性？"},
+    "department": {"type": "choice", "instructions": "应该由哪个部门处理？", "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"}},
+    "frustration": {"type": "score", "instructions": "客户有多不满？", "criteria": ["平静", "不满", "非常愤怒"]}
+  }
+}
