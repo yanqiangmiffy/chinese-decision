@@ -27,21 +27,21 @@ The model is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) a
 
 - ⚡ **One forward pass, zero output tokens**: reads the logits of candidate letters `A`–`Z` at the last position and applies softmax. No autoregressive decoding, no chain of thought.
 - 🧩 **Three question types**: `noul` (yes/no), `choice` (single choice), and `score` (ordered levels, returns the expected level).
-- 🏆 **Compared with Chinese-Jev**: **70.26%** accuracy on the CJ-Bench general domain, above the closed-source Jev (68.35%) and Chinese-Jev General (69.20%). A **single model** averages **71.61%** across medical, legal, and finance, above Chinese-Jev's three domain specialists (70.82%).
-- 📏 **Usable probabilities**: without temperature calibration, overall CJ-Bench ECE is **1.25%**, and the specialized-domain average ECE of **1.75%** is the lowest among all compared models.
-- 🪶 **Lightweight deployment**: 0.8B parameters, about 72 ms median single-request latency and about 133 decisions/s batched throughput on one A800, with 6.7 GB peak GPU memory.
+- 🏆 **Compared with Chinese-Jev**: **70.90%** accuracy on the CJ-Bench general domain, above the closed-source Jev (68.35%) and Chinese-Jev General (69.20%). A **single model** beats all three of Chinese-Jev's domain specialists on medical, legal, and finance, averaging **74.14%** (Chinese-Jev-S: 70.82%); its medical accuracy of **87.89%** is the highest among all compared models.
+- 📏 **Usable probabilities**: without temperature calibration, overall CJ-Bench ECE is **0.84%**, and the specialized-domain average ECE of **1.49%** is the lowest among all compared models.
+- 🪶 **Lightweight deployment**: 0.8B parameters, about 70 ms median single-request latency and about 133 decisions/s batched throughput on one A800, with 6.7 GB peak GPU memory.
 - 🔌 **hmm / System One compatible API**: ships with a ready-to-run HTTP server.
 
 ## News
 
-- **2026-10-14**: Evaluated the step 3000 checkpoint on the full CJ-Bench test set (307,900 decisions) and compared it with Tables 1 and 2 of the Chinese-Jev paper.
+- **2026-10-14**: Evaluated the step 5000 checkpoint on the full CJ-Bench test set (307,900 decisions) and compared it with Tables 1 and 2 of the Chinese-Jev paper.
 - **In progress**: one-epoch full training (13,048,000 decisions) on 4 GPUs with DDP. When it finishes, the pipeline calibrates temperature and merges the weights automatically; results will be updated then.
 
 ## Model
 
 | Model | Base | Params | Max input | Candidates | Status |
 |---|---|---:|---:|---:|---|
-| `chinese-decision-0.8b` | Qwen3.5-0.8B | 0.8B | 16,384 tokens | 2–26 | Training (step 3000 evaluated) |
+| `chinese-decision-0.8b` | Qwen3.5-0.8B | 0.8B | 16,384 tokens | 2–26 | Training (step 5000 evaluated) |
 
 ## How It Works
 
@@ -86,7 +86,7 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 ### Comparison with Chinese-Jev
 
-[Chinese-Jev](https://arxiv.org/abs/2609.36965) (Wang et al., 2026) introduced CJ-Dataset and CJ-Bench. All baseline numbers below are **quoted directly from Tables 1 and 2 of that paper**; we did not reproduce them. Our results come from the **step 3000 checkpoint** (the best adapter by validation distribution NLL, about 30% of one epoch), with no temperature calibration. The best result in each column is in **bold**.
+[Chinese-Jev](https://arxiv.org/abs/2609.36965) (Wang et al., 2026) introduced CJ-Dataset and CJ-Bench. All baseline numbers below are **quoted directly from Tables 1 and 2 of that paper**; we did not reproduce them. Our results come from the **step 5000 checkpoint** (the best adapter by validation distribution NLL, about 50% of one epoch), with no temperature calibration. The best result in each column is in **bold**.
 
 **General domain (paper Table 1)**
 
@@ -98,7 +98,7 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 | Laya Multilingual | 40.22 | 23.04 | **14** |
 | Jev † | 68.35 | 11.45 | 284 |
 | Chinese-Jev General | 69.20 | 3.78 | **14** |
-| **Chinese Decision (ours)** | **70.26** | **3.21** | 72 ‡ |
+| **Chinese Decision (ours)** | **70.90** | **3.05** | 70 ‡ |
 
 **Specialized domains (paper Table 2)**
 
@@ -110,8 +110,8 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 | Laya | 24.55 | 43.05 | 34.72 | 31.49 | 38.31 | 26.18 | 32.53 | 33.57 | **15.00** |
 | Jev † | 84.29 | 5.70 | **68.35** | 8.03 | **78.39** | 2.98 | **77.01** | 5.57 | 256.33 |
 | Chinese-Jev-G | 39.77 | 17.33 | 38.76 | 15.37 | 35.39 | 14.43 | 37.97 | 15.71 | **15.00** |
-| Chinese-Jev-S (3 domain specialists) | **87.65** | 7.25 | 60.10 | 17.45 | 64.72 | 11.55 | 70.82 | 12.08 | **15.00** |
-| **Chinese Decision (single model)** | 87.22 | **0.35** | 58.93 | **2.15** | 68.67 | **2.75** | 71.61 | **1.75** | 72 ‡ |
+| Chinese-Jev-S (3 domain specialists) | 87.65 | 7.25 | 60.10 | 17.45 | 64.72 | 11.55 | 70.82 | 12.08 | **15.00** |
+| **Chinese Decision (single model)** | **87.89** | **0.30** | 63.37 | **2.30** | 71.17 | **1.89** | 74.14 | **1.49** | 70 ‡ |
 
 > † Jev is a hosted API; its latency includes network round-trip time.
 > ‡ Our latency was measured on one A800 and is the median across all four domains; the paper's models were measured on an H200, so the two are not directly comparable.
@@ -119,9 +119,9 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 **Key findings**
 
-- **General domain**: best accuracy and best ECE in the table, 1.91 points above Jev and 1.06 points above Chinese-Jev General.
-- **Specialized domains**: average accuracy is 0.79 points above Chinese-Jev-S and reaches 93.0% of Jev's. Medical is 2.93 points above Jev and 0.43 below Chinese-Jev-S; finance is 3.95 above Chinese-Jev-S; legal is 1.17 below Chinese-Jev-S. Legal and finance still trail Jev by 9.42 and 9.72 points.
-- **Calibration**: with no temperature calibration, ECE stays below 3.3% in every domain, and the specialized-domain average ECE is less than one-sixth of Chinese-Jev-S's.
+- **General domain**: best accuracy and best ECE in the table, 2.55 points above Jev and 1.70 points above Chinese-Jev General.
+- **Specialized domains**: accuracy **beats Chinese-Jev-S in all three domains** (medical +0.24, legal +3.27, finance +6.45 points), and the average reaches 96.3% of Jev's. Medical is 3.60 points above Jev, the highest in the table; legal and finance still trail Jev by 4.98 and 7.22 points.
+- **Calibration**: with no temperature calibration, ECE stays below 3.1% in every domain, and the specialized-domain average ECE is less than one-eighth of Chinese-Jev-S's.
 - **One model**: Chinese-Jev-S is three separately fine-tuned specialists; this project covers all four domains with **one model**.
 - **Latency**: our model has roughly 2.5× the parameters of Chinese-Jev (about 322M), and its single-request latency is higher.
 
@@ -145,18 +145,18 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 <details>
 <summary><b>CJ-Bench by domain and by type</b></summary>
 
-> Step 3000, uncalibrated (T = 1), single A800 80GB, BF16. ACC and ECE use hard-label items only; NLL and Brier cover every item, including soft labels.
+> Step 5000, uncalibrated (T = 1), single A800 80GB, BF16. ACC and ECE use hard-label items only; NLL and Brier cover every item, including soft labels.
 
 **By domain**
 
 | Domain | Items | ACC ↑ | ECE ↓ | NLL ↓ | Brier ↓ |
 |---|---:|---:|---:|---:|---:|
-| General | 100,000 | 70.26 | 3.21 | 0.781 | 0.384 |
-| Medical | 200,000 | 87.22 | 0.35 | 0.338 | 0.174 |
-| Legal | 4,300 | 58.93 | 2.15 | 0.863 | 0.499 |
-| Finance | 3,600 | 68.67 | 2.75 | 0.720 | 0.408 |
-| **Overall (micro)** | **307,900** | **81.21** | **1.25** | **0.494** | **0.249** |
-| **Four-domain average (macro)** | — | **71.27** | — | **0.675** | — |
+| General | 100,000 | 70.90 | 3.05 | 0.767 | 0.376 |
+| Medical | 200,000 | 87.89 | 0.30 | 0.317 | 0.164 |
+| Legal | 4,300 | 63.37 | 2.30 | 0.787 | 0.453 |
+| Finance | 3,600 | 71.17 | 1.89 | 0.674 | 0.382 |
+| **Overall (micro)** | **307,900** | **81.95** | **0.84** | **0.474** | **0.240** |
+| **Four-domain average (macro)** | — | **73.33** | — | **0.636** | — |
 
 > Medical makes up 65% of the test set, so the micro average mostly reflects the medical domain. Use the macro average when comparing across domains.
 
@@ -164,33 +164,33 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 | Type | Items | ACC ↑ | ECE ↓ | NLL ↓ | Expected-level MAE ↓ |
 |---|---:|---:|---:|---:|---:|
-| `noul` | 134,577 | 94.40 | 0.59 | 0.131 | — |
-| `choice` | 134,577 | 75.18 | 2.15 | 0.703 | — |
-| `score` | 38,746 | 54.20 | 0.89 | 1.027 | 0.614 |
+| `noul` | 134,577 | 94.58 | 0.79 | 0.129 | — |
+| `choice` | 134,577 | 76.32 | 0.70 | 0.659 | — |
+| `score` | 38,746 | 55.53 | 2.72 | 1.029 | 0.593 |
 
 **Accuracy by domain × type (%)**
 
 | Domain | `noul` | `choice` | `score` |
 |---|---:|---:|---:|
-| General | 86.63 | 69.59 | 52.95 |
-| Medical | 97.56 | 77.59 | 63.10 |
-| Legal | 76.73 | 51.80 | 46.62 |
-| Finance | 72.58 | 61.00 | 72.42 |
+| General | 86.83 | 70.23 | 54.08 |
+| Medical | 97.64 | 78.82 | 65.09 |
+| Legal | 80.07 | 58.13 | 50.15 |
+| Finance | 76.67 | 62.08 | 74.75 |
 
 </details>
 
 <details>
 <summary><b>Before vs. after fine-tuning (validation)</b></summary>
 
-On a stratified subset of the official validation set (4 domains × 3 types, 100 items each, 1,200 total), zero-shot base model vs. step 3000:
+On a stratified subset of the official validation set (4 domains × 3 types, 100 items each, 1,200 total), zero-shot base model vs. step 5000:
 
 | Domain | Qwen3.5-0.8B ACC | **Chinese Decision ACC** | Qwen3.5-0.8B ECE | **Chinese Decision ECE** |
 |---|---:|---:|---:|---:|
-| General | 36.64 | **70.55** | 28.25 | **6.28** |
-| Medical | 16.67 | **83.33** | 43.40 | **4.80** |
-| Legal | 40.67 | **60.33** | 24.03 | **5.25** |
-| Finance | 44.33 | **68.33** | 16.77 | **3.52** |
-| **Overall** | 34.56 | **70.64** | 27.45 | **2.58** |
+| General | 36.64 | **74.32** | 28.25 | **5.05** |
+| Medical | 16.67 | **82.00** | 43.40 | **4.09** |
+| Legal | 40.67 | **63.33** | 24.03 | **5.98** |
+| Finance | 44.33 | **69.67** | 16.77 | **6.24** |
+| **Overall** | 34.56 | **72.32** | 27.45 | **3.77** |
 
 </details>
 
@@ -198,7 +198,7 @@ On a stratified subset of the official validation set (4 domains × 3 types, 100
 
 | Metric | Value |
 |---|---:|
-| Single-request latency (batch = 1, warmed, median) | 71.6 ms |
+| Single-request latency (batch = 1, warmed, median) | 70.1 ms |
 | Batched throughput | 133 decisions/s |
 | Peak GPU memory (batched evaluation) | 6.7 GB |
 | Mean CJ-Bench input length | 223 tokens |
@@ -418,8 +418,8 @@ python -m unittest discover -s tests
 
 ## Limitations
 
-- **Training is not finished**: the reported results come from an uncalibrated step 3000 adapter and will be updated after training completes.
-- **Legal and finance still lag**: both trail the closed-source Jev by about 9–10 accuracy points, and the `score` type is weaker overall (e.g. 46.62% on legal `score`).
+- **Training is not finished**: the reported results come from an uncalibrated step 5000 adapter and will be updated after training completes.
+- **Legal and finance still lag**: both still trail the closed-source Jev by 5–7 accuracy points, and the `score` type is weaker overall (e.g. 50.15% on legal `score`).
 - **Slower than encoder models**: the 0.8B decoder has higher single-request latency than the roughly 322M Chinese-Jev encoder.
 - **`confidence` is not accuracy**: it only measures how sharp the distribution is. Before acting automatically on a threshold, check calibration on your own data.
 - **Label semantics follow the upstream tasks**: for example, medical matching labels describe the original matching task and do not imply medical correctness. Do not use model outputs as the sole basis for medical, legal, or financial decisions.
