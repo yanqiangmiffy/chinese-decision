@@ -51,6 +51,10 @@ def check_api(url, payload):
         try:
             request(url + "/v1/systemone", body)
         except urllib.error.HTTPError as error:
+            # Drain error responses before closing so Windows clients do not
+            # reset the connection while the server is still sending the body.
+            error.read()
+            error.close()
             if error.code != 422:
                 raise ValueError(f"invalid schema returned HTTP {error.code}") from error
         else:

@@ -14,7 +14,8 @@ def load_tokenizer(base):
 
 def load_model(base, adapter=None, trainable=False, device="cuda"):
     # AutoModelForCausalLM extracts the Qwen3.5 text backbone from multimodal weights.
-    model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.bfloat16,
+    dtype = torch.float32 if torch.device(device).type == "cpu" else torch.bfloat16
+    model = AutoModelForCausalLM.from_pretrained(base, dtype=dtype,
                                                attn_implementation="sdpa", local_files_only=True).to(device)
     model.config.use_cache = False
     if adapter:

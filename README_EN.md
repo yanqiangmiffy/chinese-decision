@@ -260,10 +260,10 @@ On a stratified subset of the official validation set (4 domains × 3 types, 100
 ```bash
 git clone https://github.com/yanqiangmiffy/chinese-decision.git
 cd chinese-decision
-pip install -e .
+pip install -e ".[train]"
 ```
 
-Python ≥ 3.11 and a CUDA GPU are required. Main dependencies: `torch>=2.8`, `transformers>=5.3`, `peft>=0.19`, `flash-linear-attention>=0.4`. If your environment already has a CUDA build of PyTorch that pip should leave alone, use `pip install -e . --no-deps`.
+Python ≥ 3.11 is required. `[train]` installs the CUDA training/inference dependencies. For CPU GGUF serving use `pip install -e ".[gguf]"`; PyTorch, PEFT and flash-linear-attention are not required. Transformers-only inference uses `.[torch]`. If your environment already has a CUDA build of PyTorch that pip should leave alone, use `pip install -e . --no-deps`.
 
 ### Models and Data
 
@@ -319,6 +319,18 @@ print({key: round(p, 4) for (key, _), p in zip(options, probs)})
 ```bash
 python scripts/serve.py --base models/chinese-decision-0.8b --port 8787
 ```
+
+For CPU Q8_0 serving, install `.[gguf]`, export the model using
+`scripts/convert_gguf.py`, and run:
+
+```bash
+python scripts/serve.py --backend gguf --base models/chinese-decision-0.8b-gguf --gguf models/chinese-decision-0.8b-gguf/chinese-decision-0.8b-Q8_0.gguf --threads 8 --context-size 16384 --port 8787
+```
+
+See [CPU deployment](docs/CPU.md) for conversion and benchmark instructions.
+The existing routes and probability semantics are preserved. `--device cpu`
+selects a Transformers FP32 baseline. Requests exceeding the effective runtime
+context limit return HTTP 422 without truncation.
 
 You can also load the base model with an adapter: `--base models/Qwen3.5-0.8B --adapter runs/cj-ddp/best` (temperature is then 1, i.e. uncalibrated).
 

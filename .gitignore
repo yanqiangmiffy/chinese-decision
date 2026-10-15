@@ -33,3 +33,4 @@ id_dsa
 *.key
 ssh_config
 ssh_config.local
+tmp

@@ -11,13 +11,15 @@ license = "MIT AND Apache-2.0"
 license-files = ["LICENSE", "LICENSES/Apache-2.0.txt", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.11"
 dependencies = [
-    "torch>=2.8",
     "transformers>=5.3,<6",
-    "peft>=0.19",
-    "flash-linear-attention>=0.4",
     "fastapi",
     "uvicorn",
 ]
+
+[project.optional-dependencies]
+gguf = ["llama-cpp-python>=0.3.36"]
+torch = ["torch>=2.8", "peft>=0.19"]
+train = ["torch>=2.8", "peft>=0.19", "flash-linear-attention>=0.4"]
 
 [project.urls]
 Repository = "https://github.com/yanqiangmiffy/chinese-decision"

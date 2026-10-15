@@ -260,10 +260,10 @@ B: {key₂} — {描述₂}
 ```bash
 git clone https://github.com/yanqiangmiffy/chinese-decision.git
 cd chinese-decision
-pip install -e .
+pip install -e ".[train]"
 ```
 
-需要 Python ≥ 3.11 和 CUDA GPU。主要依赖：`torch>=2.8`、`transformers>=5.3`、`peft>=0.19`、`flash-linear-attention>=0.4`。如果环境里已经装好了 CUDA 版 PyTorch，不希望 pip 改动它，可以使用 `pip install -e . --no-deps`。
+需要 Python ≥ 3.11。上面的 `[train]` 安装 CUDA 训练/推理依赖；CPU GGUF 服务使用 `pip install -e ".[gguf]"`，不需要 PyTorch、PEFT 或 flash-linear-attention。只使用 Transformers 推理可安装 `.[torch]`。如果环境里已经装好了 CUDA 版 PyTorch，不希望 pip 改动它，可以使用 `pip install -e . --no-deps`。
 
 ### 准备模型与数据
 
@@ -321,6 +321,14 @@ python scripts/serve.py --base models/chinese-decision-0.8b --port 8787
 ```
 
 也可以直接加载基础模型和 adapter：`--base models/Qwen3.5-0.8B --adapter runs/cj-ddp/best`（此时温度为 1，即未校准）。
+
+CPU 上使用 Q8_0 GGUF（转换步骤与验证说明见 [CPU 部署](docs/CPU.md)）：
+
+```bash
+python scripts/serve.py --backend gguf --base models/chinese-decision-0.8b-gguf --gguf models/chinese-decision-0.8b-gguf/chinese-decision-0.8b-Q8_0.gguf --threads 8 --context-size 16384 --port 8787
+```
+
+`--base` 提供分词器、提示模板和 `decision_config.json`，`--gguf` 提供权重。服务读取最后输入位置的候选字母 logits，不调用文本生成；两个原有接口、三种题型和温度计算均保持一致。上下文超过 `--context-size` 或模型配置的较小限制时返回 `422`，不会截断。原始 Transformers CPU 基线可使用 `--device cpu`，此时加载 FP32 权重。
 
 一个请求可以同时包含多个问题：
 
