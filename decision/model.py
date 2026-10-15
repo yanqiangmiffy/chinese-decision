@@ -32,8 +32,11 @@ def letter_tokens(tokenizer, device):
 
 def forward_batch(model, tokenizer, letter_ids, batch):
     device = next(model.parameters()).device
+    # Qwen3.5's linear-attention layers zero padded positions only in batches of two or more rows,
+    # so a lone input stays unpadded; left padding would otherwise leak into its recurrent state.
     inputs = tokenizer.pad([{"input_ids": e["input_ids"], "attention_mask": [1] * len(e["input_ids"])}
-                            for e in batch], padding=True, pad_to_multiple_of=64, return_tensors="pt").to(device)
+                            for e in batch], padding=True, pad_to_multiple_of=64 if len(batch) > 1 else None,
+                           return_tensors="pt").to(device)
     logits = model(**inputs, logits_to_keep=1, use_cache=False).logits[:, -1, letter_ids].float()
     sizes = torch.tensor([len(e["target"]) for e in batch], device=device)
     valid = torch.arange(len(letter_ids), device=device)[None, :] < sizes[:, None]
