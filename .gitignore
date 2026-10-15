@@ -16,7 +16,6 @@ logs/
 # Personal launchers, server tools, and notes (see README: local/ is not part of the project)
 local/
 .transfer/
-assets/
 data/
 
 # Editors and agents

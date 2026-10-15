@@ -27,21 +27,49 @@ The model is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) a
 
 - ⚡ **One forward pass, zero output tokens**: reads the logits of candidate letters `A`–`Z` at the last position and applies softmax. No autoregressive decoding, no chain of thought.
 - 🧩 **Three question types**: `noul` (yes/no), `choice` (single choice), and `score` (ordered levels, returns the expected level).
-- 🏆 **Compared with Chinese-Jev**: **70.90%** accuracy on the CJ-Bench general domain, above the closed-source Jev (68.35%) and Chinese-Jev General (69.20%). A **single model** beats all three of Chinese-Jev's domain specialists on medical, legal, and finance, averaging **74.14%** (Chinese-Jev-S: 70.82%); its medical accuracy of **87.89%** is the highest among all compared models.
-- 📏 **Usable probabilities**: without temperature calibration, overall CJ-Bench ECE is **0.84%**, and the specialized-domain average ECE of **1.49%** is the lowest among all compared models.
-- 🪶 **Lightweight deployment**: 0.8B parameters, about 70 ms median single-request latency and about 133 decisions/s batched throughput on one A800, with 6.7 GB peak GPU memory.
+- 🏆 **Compared with Chinese-Jev**: **72.24%** accuracy on the CJ-Bench general domain, above the closed-source Jev (68.35%) and Chinese-Jev General (69.20%). A **single model** beats all three of Chinese-Jev's domain specialists on medical, legal, and finance, averaging **76.98%**, on par with the closed-source Jev (77.01%); its medical accuracy of **88.86%** is the highest among all compared models.
+- 📏 **Usable probabilities**: without temperature calibration, overall CJ-Bench ECE is **1.07%**, and the specialized-domain average ECE of **2.46%** is the lowest among all compared models.
+- 🪶 **Lightweight deployment**: 0.8B parameters, about 70 ms median single-request latency and about 132 decisions/s batched throughput on one A800, with 6.7 GB peak GPU memory.
 - 🔌 **hmm / System One compatible API**: ships with a ready-to-run HTTP server.
 
 ## News
 
+- **2026-10-15**: Full training finished (1 epoch, 13,048,000 decisions, 10,132 steps). The validation-selected step 10000 reaches 72.24% on the CJ-Bench general domain and a 76.98% specialized-domain average, on par with the closed-source Jev. The weights are merged, and a temperature of T = 1.108 was fitted on a separate validation partition.
 - **2026-10-14**: Evaluated the step 5000 checkpoint on the full CJ-Bench test set (307,900 decisions) and compared it with Tables 1 and 2 of the Chinese-Jev paper.
-- **In progress**: one-epoch full training (13,048,000 decisions) on 4 GPUs with DDP. When it finishes, the pipeline calibrates temperature and merges the weights automatically; results will be updated then.
 
 ## Model
 
 | Model | Base | Params | Max input | Candidates | Status |
 |---|---|---:|---:|---:|---|
-| `chinese-decision-0.8b` | Qwen3.5-0.8B | 0.8B | 16,384 tokens | 2–26 | Training (step 5000 evaluated) |
+| `chinese-decision-0.8b` | Qwen3.5-0.8B | 0.8B | 16,384 tokens | 2–26 | Trained (step 10000) |
+
+## Showcase
+
+The screenshots below come from Decision Studio, our test platform, serving the final step 10000 model (the interface is in Chinese). Every scenario follows the same design: **business rules live in code; the decision model only supplies probabilities**.
+
+### Ticket Triage: Six Judgments in One Request
+
+Each support ticket gets six questions in a single request: category (`choice`); severity and frustration (`score`); and whether it is reproducible, asks for a refund, or signals churn risk (`noul`). All six are asked up front whether or not they end up being used, which saves extra round trips. Routing rules in code turn these probabilities into a queue, and tickets whose category confidence is below 0.5 go to human review. In the screenshot, 8 tickets × 6 questions = 48 decisions take 285 ms.
+
+![Ticket triage: one request judges category, severity, frustration, reproducibility, refund and churn risk; code routes the ticket](assets/scenario-triage.png)
+
+### LLM Guardrail: Safety Checks with a Human-Review Band
+
+Every message into and out of an LLM is checked first. The input side checks for prompt injection / jailbreaks, private information, abuse or threats, and off-topic requests; the output side checks for system-prompt leaks, unauthorized promises, private information in the reply, and inappropriate content. Each check is a yes / no probability with two thresholds: below the review threshold it passes automatically, above the block threshold it is blocked, and anything in between goes to a person, so the width of that band is the human-review budget. In the screenshot, a "developer mode" jailbreak is blocked on the input side (85.2%) before the LLM is ever called; all 8 checks take 89.2 ms.
+
+![LLM guardrail: four input and four output checks, each passed, blocked, or sent to human review by threshold](assets/scenario-guardrail.png)
+
+### Danmaku Guard: Real-Time Moderation of Live-Stream Comments
+
+Each live-stream comment (danmaku) takes one request with one classification and one yes / no judgment: abuse and ads are blocked, spoilers are folded, and viewer questions are highlighted for the host. In the screenshot, median (p50) moderation latency is 82.2 ms. The page also records a known weakness: the spoiler check is swayed by the word "spoiler" itself (as in "no spoilers, please") and cannot tell speculation from an actual spoiler.
+
+![Danmaku guard: blocks abuse and ads, folds spoilers, and highlights questions in real time](assets/scenario-danmaku.png)
+
+### Agent Router: Confidence Gates by Risk Level
+
+For every user message, the decision model first picks a tool, checks whether the request has the information it needs, and estimates the operation's risk; the confidence threshold then depends on the risk tier: 40% for read-only actions (weather, search, chat), 65% for writes (calendar, messages, smart home), and 85% for money (transfers, payments). In the screenshot, "帮我约王总下周二下午聊一下预算" ("set up a budget chat with Mr. Wang next Tuesday afternoon") is routed to the calendar tool with 99% confidence, but the probability that key information is missing is 71%, above the 70% follow-up threshold, so the agent first asks which day, what time, and with whom, in 81.6 ms.
+
+![Agent router: picks a tool, decides whether to ask a follow-up, and gates actions by risk-tiered confidence thresholds](assets/scenario-agent.png)
 
 ## How It Works
 
@@ -86,7 +114,7 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 ### Comparison with Chinese-Jev
 
-[Chinese-Jev](https://arxiv.org/abs/2609.36965) (Wang et al., 2026) introduced CJ-Dataset and CJ-Bench. All baseline numbers below are **quoted directly from Tables 1 and 2 of that paper**; we did not reproduce them. Our results come from the **step 5000 checkpoint** (the best adapter by validation distribution NLL, about 50% of one epoch), with no temperature calibration. The best result in each column is in **bold**.
+[Chinese-Jev](https://arxiv.org/abs/2609.36965) (Wang et al., 2026) introduced CJ-Dataset and CJ-Bench. All baseline numbers below are **quoted directly from Tables 1 and 2 of that paper**; we did not reproduce them. Our results come from the **step 10000 checkpoint** (the best adapter by validation distribution NLL after the full one-epoch run of 10,132 steps), with no temperature calibration (T = 1). The best result in each column is in **bold**.
 
 **General domain (paper Table 1)**
 
@@ -98,7 +126,7 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 | Laya Multilingual | 40.22 | 23.04 | **14** |
 | Jev † | 68.35 | 11.45 | 284 |
 | Chinese-Jev General | 69.20 | 3.78 | **14** |
-| **Chinese Decision (ours)** | **70.90** | **3.05** | 70 ‡ |
+| **Chinese Decision (ours)** | **72.24** | **3.03** | 70 ‡ |
 
 **Specialized domains (paper Table 2)**
 
@@ -111,7 +139,7 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 | Jev † | 84.29 | 5.70 | **68.35** | 8.03 | **78.39** | 2.98 | **77.01** | 5.57 | 256.33 |
 | Chinese-Jev-G | 39.77 | 17.33 | 38.76 | 15.37 | 35.39 | 14.43 | 37.97 | 15.71 | **15.00** |
 | Chinese-Jev-S (3 domain specialists) | 87.65 | 7.25 | 60.10 | 17.45 | 64.72 | 11.55 | 70.82 | 12.08 | **15.00** |
-| **Chinese Decision (single model)** | **87.89** | **0.30** | 63.37 | **2.30** | 71.17 | **1.89** | 74.14 | **1.49** | 70 ‡ |
+| **Chinese Decision (single model)** | **88.86** | **0.17** | 67.86 | **5.70** | 74.22 | **1.50** | 76.98 | **2.46** | 70 ‡ |
 
 > † Jev is a hosted API; its latency includes network round-trip time.
 > ‡ Our latency was measured on one A800 and is the median across all four domains; the paper's models were measured on an H200, so the two are not directly comparable.
@@ -119,9 +147,9 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 **Key findings**
 
-- **General domain**: best accuracy and best ECE in the table, 2.55 points above Jev and 1.70 points above Chinese-Jev General.
-- **Specialized domains**: accuracy **beats Chinese-Jev-S in all three domains** (medical +0.24, legal +3.27, finance +6.45 points), and the average reaches 96.3% of Jev's. Medical is 3.60 points above Jev, the highest in the table; legal and finance still trail Jev by 4.98 and 7.22 points.
-- **Calibration**: with no temperature calibration, ECE stays below 3.1% in every domain, and the specialized-domain average ECE is less than one-eighth of Chinese-Jev-S's.
+- **General domain**: best accuracy and best ECE in the table, 3.89 points above Jev and 3.04 points above Chinese-Jev General.
+- **Specialized domains**: accuracy **beats Chinese-Jev-S in all three domains** (medical +1.21, legal +7.76, finance +9.50 points), and the 76.98% average is on par with Jev (77.01%). Medical is 4.57 points above Jev, the highest in the table; legal is only 0.49 points below Jev, and finance 4.17 below.
+- **Calibration**: with no temperature calibration, ECE is 0.17% for medical, 1.50% for finance, 3.03% for general, and 5.70% for legal; the specialized-domain average of 2.46% is still the lowest in the table, about one-fifth of Chinese-Jev-S's.
 - **One model**: Chinese-Jev-S is three separately fine-tuned specialists; this project covers all four domains with **one model**.
 - **Latency**: our model has roughly 2.5× the parameters of Chinese-Jev (about 322M), and its single-request latency is higher.
 
@@ -142,40 +170,41 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 ### Results Across Training
 
-The three best checkpoints selected in turn by validation distribution NLL during the same run, each evaluated on the full CJ-Bench test set under the same protocol (uncalibrated, all 307,900 decisions). The last two rows are quoted from the Chinese-Jev paper for reference.
+The four best checkpoints selected in turn by validation distribution NLL during the same run, each evaluated on the full CJ-Bench test set under the same protocol (uncalibrated, all 307,900 decisions). The last two rows are quoted from the Chinese-Jev paper for reference.
 
 | Checkpoint | Progress | Val. NLL ↓ | General ACC ↑ | Medical ACC ↑ | Legal ACC ↑ | Finance ACC ↑ | Specialized avg. ACC ↑ | Specialized avg. ECE ↓ | Overall ECE ↓ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | step 2000 | 19.8% | 0.739 | 69.04 | 86.78 | 54.07 | 64.17 | 68.34 | 2.73 | 1.63 |
 | step 3000 | ~30% | 0.691 | 70.26 | 87.22 | 58.93 | 68.67 | 71.61 | 1.75 | 1.25 |
-| **step 5000 (current)** | ~50% | 0.676 | 70.90 | 87.89 | 63.37 | 71.17 | 74.14 | 1.49 | 0.84 |
+| step 5000 | ~49% | 0.676 | 70.90 | 87.89 | 63.37 | 71.17 | 74.14 | 1.49 | 0.84 |
+| **step 10000 (final)** | ~99% | 0.600 | 72.24 | 88.86 | 67.86 | 74.22 | 76.98 | 2.46 | 1.07 |
 | *Reference: Chinese-Jev (G / S)* | — | — | 69.20 | 87.65 | 60.10 | 64.72 | 70.82 | 12.08 | — |
 | *Reference: Jev* | — | — | 68.35 | 84.29 | 68.35 | 78.39 | 77.01 | 5.57 | — |
 
-> Progress is the share of one epoch (13,048,000 decisions) trained so far; steps 3000 and 5000 are estimated from the average throughput up to step 2000. For Chinese-Jev, the general domain uses the General model and the specialized domains use the three specialists (S).
+> Progress is the share of one epoch (13,048,000 decisions) trained so far; steps 3000, 5000, and 10000 are estimated from the full run's average of about 1,288 decisions per step (13,048,000 decisions / 10,132 steps). For Chinese-Jev, the general domain uses the General model and the specialized domains use the three specialists (S).
 
-- **Steady gains in every domain**: from step 2000 to step 5000, legal improves by 9.30 points, finance by 7.00, general by 1.86, and medical by 1.11.
-- **Ahead of Chinese-Jev-S from step 3000 on**: specialized-domain average accuracy rises from 68.34% to 74.14%, and the gap to Jev (77.01%) narrows from 8.67 to 2.87 points.
-- **Calibration improves with training**: without temperature calibration, specialized-domain average ECE falls from 2.73% to 1.49%, and overall ECE from 1.63% to 0.84%.
-- The drop in validation NLL moves in the same direction as the test-set gains.
+- **Steady gains in every domain**: from step 2000 to step 10000, legal improves by 13.79 points, finance by 10.06, general by 3.20, and medical by 2.08.
+- **Ahead of Chinese-Jev-S from step 3000 on**: specialized-domain average accuracy rises from 68.34% to 76.98%, and the gap to Jev (77.01%) narrows from 8.67 to 0.03 points.
+- **Calibration does not improve monotonically**: without temperature calibration, overall ECE falls from 1.63% to 0.84% at step 5000 and ends at 1.07%; specialized-domain average ECE is lowest at step 5000 (1.49%) and ends at 2.46%, mostly because legal ECE rises from 2.30% to 5.70%.
+- Validation NLL keeps falling (0.739 → 0.600), in the same direction as the test-set accuracy gains.
 
 ### Full Results
 
 <details>
 <summary><b>CJ-Bench by domain and by type</b></summary>
 
-> Step 5000, uncalibrated (T = 1), single A800 80GB, BF16. ACC and ECE use hard-label items only; NLL and Brier cover every item, including soft labels.
+> Step 10000, uncalibrated (T = 1), single A800 80GB, BF16. ACC and ECE use hard-label items only; NLL and Brier cover every item, including soft labels.
 
 **By domain**
 
 | Domain | Items | ACC ↑ | ECE ↓ | NLL ↓ | Brier ↓ |
 |---|---:|---:|---:|---:|---:|
-| General | 100,000 | 70.90 | 3.05 | 0.767 | 0.376 |
-| Medical | 200,000 | 87.89 | 0.30 | 0.317 | 0.164 |
-| Legal | 4,300 | 63.37 | 2.30 | 0.787 | 0.453 |
-| Finance | 3,600 | 71.17 | 1.89 | 0.674 | 0.382 |
-| **Overall (micro)** | **307,900** | **81.95** | **0.84** | **0.474** | **0.240** |
-| **Four-domain average (macro)** | — | **73.33** | — | **0.636** | — |
+| General | 100,000 | 72.24 | 3.03 | 0.693 | 0.356 |
+| Medical | 200,000 | 88.86 | 0.17 | 0.293 | 0.152 |
+| Legal | 4,300 | 67.86 | 5.70 | 0.728 | 0.414 |
+| Finance | 3,600 | 74.22 | 1.50 | 0.593 | 0.336 |
+| **Overall (micro)** | **307,900** | **83.11** | **1.07** | **0.432** | **0.224** |
+| **Four-domain average (macro)** | — | **75.80** | — | **0.577** | — |
 
 > Medical makes up 65% of the test set, so the micro average mostly reflects the medical domain. Use the macro average when comparing across domains.
 
@@ -183,33 +212,33 @@ The three best checkpoints selected in turn by validation distribution NLL durin
 
 | Type | Items | ACC ↑ | ECE ↓ | NLL ↓ | Expected-level MAE ↓ |
 |---|---:|---:|---:|---:|---:|
-| `noul` | 134,577 | 94.58 | 0.79 | 0.129 | — |
-| `choice` | 134,577 | 76.32 | 0.70 | 0.659 | — |
-| `score` | 38,746 | 55.53 | 2.72 | 1.029 | 0.593 |
+| `noul` | 134,577 | 94.95 | 0.39 | 0.117 | — |
+| `choice` | 134,577 | 78.33 | 1.48 | 0.588 | — |
+| `score` | 38,746 | 56.47 | 2.35 | 0.987 | 0.579 |
 
 **Accuracy by domain × type (%)**
 
 | Domain | `noul` | `choice` | `score` |
 |---|---:|---:|---:|
-| General | 86.83 | 70.23 | 54.08 |
-| Medical | 97.64 | 78.82 | 65.09 |
-| Legal | 80.07 | 58.13 | 50.15 |
-| Finance | 76.67 | 62.08 | 74.75 |
+| General | 87.57 | 72.88 | 54.66 |
+| Medical | 97.81 | 80.57 | 66.53 |
+| Legal | 85.80 | 64.13 | 51.46 |
+| Finance | 76.50 | 63.08 | 83.08 |
 
 </details>
 
 <details>
 <summary><b>Before vs. after fine-tuning (validation)</b></summary>
 
-On a stratified subset of the official validation set (4 domains × 3 types, 100 items each, 1,200 total), zero-shot base model vs. step 5000:
+On a stratified subset of the official validation set (4 domains × 3 types, 100 items each, 1,200 total), zero-shot base model vs. step 10000:
 
 | Domain | Qwen3.5-0.8B ACC | **Chinese Decision ACC** | Qwen3.5-0.8B ECE | **Chinese Decision ECE** |
 |---|---:|---:|---:|---:|
-| General | 36.64 | **74.32** | 28.25 | **5.05** |
-| Medical | 16.67 | **82.00** | 43.40 | **4.09** |
-| Legal | 40.67 | **63.33** | 24.03 | **5.98** |
-| Finance | 44.33 | **69.67** | 16.77 | **6.24** |
-| **Overall** | 34.56 | **72.32** | 27.45 | **3.77** |
+| General | 36.64 | **75.34** | 28.25 | **3.76** |
+| Medical | 16.67 | **82.00** | 43.40 | **3.25** |
+| Legal | 40.67 | **65.33** | 24.03 | **7.62** |
+| Finance | 44.33 | **71.33** | 16.77 | **3.41** |
+| **Overall** | 34.56 | **73.49** | 27.45 | **2.48** |
 
 </details>
 
@@ -218,7 +247,7 @@ On a stratified subset of the official validation set (4 domains × 3 types, 100
 | Metric | Value |
 |---|---:|
 | Single-request latency (batch = 1, warmed, median) | 70.1 ms |
-| Batched throughput | 133 decisions/s |
+| Batched throughput | 132 decisions/s |
 | Peak GPU memory (batched evaluation) | 6.7 GB |
 | Mean CJ-Bench input length | 223 tokens |
 
@@ -358,9 +387,10 @@ python scripts/verify_export.py --url http://127.0.0.1:8787
 | Optimizer | AdamW, lr = 1e-4, 100-step linear warmup, then cosine decay to 10% of peak |
 | Global batch | Each step accumulates at least 1,024 decisions; each micro-batch holds at most 262,144 padded tokens and shrinks automatically for long inputs |
 | Max length | 16,384 tokens |
-| Training budget | 1 epoch, 13,048,000 decisions (about 10,000 steps) |
+| Training budget | 1 epoch, 13,048,000 decisions, 10,132 steps |
 | Precision | BF16, gradient checkpointing |
-| Model selection | Validation every 1,000 steps; best checkpoint by distribution NLL |
+| Model selection | Validation every 1,000 steps; best checkpoint by distribution NLL (step 10000 in the end) |
+| Temperature calibration | One temperature fitted on a separate validation partition, T = 1.108 |
 | Hardware | 4 × GPU, DDP |
 
 ### Data and Training Notes
@@ -464,8 +494,8 @@ python -m unittest discover -s tests
 
 ## Limitations
 
-- **Training is not finished**: the reported results come from an uncalibrated step 5000 adapter and will be updated after training completes.
-- **Legal and finance still lag**: both still trail the closed-source Jev by 5–7 accuracy points, and the `score` type is weaker overall (e.g. 50.15% on legal `score`).
+- **CJ-Bench results are uncalibrated**: they come from the step 10000 adapter before merging (T = 1). The exported merged model applies the validation-fitted temperature T = 1.108 by default, and that configuration has not been evaluated on CJ-Bench separately.
+- **Finance and `score` still lag**: finance trails the closed-source Jev by 4.17 accuracy points; the `score` type is weaker overall (56.47% overall, 51.46% on legal `score`); and legal has the highest ECE of the four domains (5.70%).
 - **Slower than encoder models**: the 0.8B decoder has higher single-request latency than the roughly 322M Chinese-Jev encoder.
 - **`confidence` is not accuracy**: it only measures how sharp the distribution is. Before acting automatically on a threshold, check calibration on your own data.
 - **Label semantics follow the upstream tasks**: for example, medical matching labels describe the original matching task and do not imply medical correctness. Do not use model outputs as the sole basis for medical, legal, or financial decisions.
