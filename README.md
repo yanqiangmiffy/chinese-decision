@@ -8,6 +8,10 @@
 [![Dataset](https://img.shields.io/badge/Data-CJ--Dataset-orange)](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset)
 [![Benchmark](https://img.shields.io/badge/Bench-CJ--Bench-green)](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
 [![Method](https://img.shields.io/badge/Method-hmm-lightgrey)](https://github.com/n4ze3m/hmm)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-chinese--decision--0.8b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-0.8b)
+[![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--0.8b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)
+[![GGUF](https://img.shields.io/badge/GGUF-Q8__0%20%C2%B7%20CPU-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf)
+[![Decision Studio](https://img.shields.io/badge/Platform-Decision%20Studio-black?logo=github)](https://github.com/yanqiangmiffy/chinese-decision-studio)
 
 中文 | [English](README_EN.md)
 
@@ -43,6 +47,15 @@
 | 模型 | 基础模型 | 参数量 | 最大输入 | 候选数 | 状态 |
 |---|---|---:|---:|---:|---|
 | `chinese-decision-0.8b` | Qwen3.5-0.8B | 0.8B | 16,384 tokens | 2–26 | 训练完成（step 10000） |
+
+权重与相关仓库：
+
+| 资源 | 说明 | 链接 |
+|---|---|---|
+| 代码（本仓库） | 训练、评测、GGUF 导出与 HTTP 服务（GPU / CPU） | [GitHub](https://github.com/yanqiangmiffy/chinese-decision) |
+| 测试平台 | Decision Studio：决策实验台、场景库、鲁棒性实验室、评测中心与性能压测 | [GitHub](https://github.com/yanqiangmiffy/chinese-decision-studio) |
+| 模型（BF16） | 合并后的权重与校准温度，transformers 推理 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b) |
+| 模型（GGUF Q8_0） | llama.cpp 推理，CPU 即可部署，不需要 PyTorch | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf) |
 
 ## 应用案例
 
@@ -268,7 +281,17 @@ pip install -e ".[train]"
 
 ### 准备模型与数据
 
-模型和数据均从本地目录加载。可以使用 Hugging Face CLI 下载（CJ 数据集目前需要申请访问，下载前先运行 `hf auth login`）：
+只想使用模型、不训练的话，直接下载已发布的权重（[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) / [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)；CPU 用 GGUF 版：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) / [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf)）：
+
+```bash
+hf download quincyqiang/chinese-decision-0.8b --local-dir models/chinese-decision-0.8b
+hf download quincyqiang/chinese-decision-0.8b-gguf --local-dir models/chinese-decision-0.8b-gguf
+# 国内网络也可以用 ModelScope
+modelscope download --model quincyqiang/chinese-decision-0.8b --local_dir models/chinese-decision-0.8b
+modelscope download --model quincyqiang/chinese-decision-0.8b-gguf --local_dir models/chinese-decision-0.8b-gguf
+```
+
+训练和评测所需的基础模型与数据均从本地目录加载。可以使用 Hugging Face CLI 下载（CJ 数据集目前需要申请访问，下载前先运行 `hf auth login`）：
 
 ```bash
 hf download Qwen/Qwen3.5-0.8B --local-dir models/Qwen3.5-0.8B
@@ -385,10 +408,10 @@ curl http://127.0.0.1:8787/v1/systemone \
 
 两个服务入口，接口和返回格式一致，都可以直接作为 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)（测试平台）的 `DECISION_BASE_URL`：
 
-| 入口 | 适用场景 | 部署 |
-|---|---|---|
-| `scripts/serve.py` | CPU（GGUF）或单机调试；逐题前向 | [docs/CPU.md](docs/CPU.md)、[deploy/gguf](deploy/gguf/) |
-| `scripts/serve_gpu.py` | GPU 生产服务；动态批处理、训练进度、检查点热更新（`POST /v1/admin/reload`） | [deploy/gpu](deploy/gpu/README.md) |
+| 入口 | 适用场景 | 权重 | 部署 |
+|---|---|---|---|
+| `scripts/serve.py` | CPU（GGUF）或单机调试；逐题前向 | GGUF：[HF](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf)（也可加载 BF16） | [docs/CPU.md](docs/CPU.md)、[deploy/gguf](deploy/gguf/) |
+| `scripts/serve_gpu.py` | GPU 生产服务；动态批处理、训练进度、检查点热更新（`POST /v1/admin/reload`） | BF16：[HF](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)，或基础模型 + 训练出的 adapter | [deploy/gpu](deploy/gpu/README.md) |
 
 检查一个正在运行的服务（两个路由、概率格式、非法请求处理）：
 

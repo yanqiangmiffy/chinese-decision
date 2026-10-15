@@ -8,6 +8,10 @@
 [![Dataset](https://img.shields.io/badge/Data-CJ--Dataset-orange)](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset)
 [![Benchmark](https://img.shields.io/badge/Bench-CJ--Bench-green)](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
 [![Method](https://img.shields.io/badge/Method-hmm-lightgrey)](https://github.com/n4ze3m/hmm)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-chinese--decision--0.8b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-0.8b)
+[![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--0.8b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)
+[![GGUF](https://img.shields.io/badge/GGUF-Q8__0%20%C2%B7%20CPU-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf)
+[![Decision Studio](https://img.shields.io/badge/Platform-Decision%20Studio-black?logo=github)](https://github.com/yanqiangmiffy/chinese-decision-studio)
 
 [中文](README.md) | English
 
@@ -43,6 +47,15 @@ The model is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) a
 | Model | Base | Params | Max input | Candidates | Status |
 |---|---|---:|---:|---:|---|
 | `chinese-decision-0.8b` | Qwen3.5-0.8B | 0.8B | 16,384 tokens | 2–26 | Trained (step 10000) |
+
+Weights and related repositories:
+
+| Resource | Description | Links |
+|---|---|---|
+| Code (this repo) | Training, evaluation, GGUF export and HTTP servers (GPU / CPU) | [GitHub](https://github.com/yanqiangmiffy/chinese-decision) |
+| Test platform | Decision Studio: decision playground, scenarios, robustness lab, evaluation center and load testing | [GitHub](https://github.com/yanqiangmiffy/chinese-decision-studio) |
+| Model (BF16) | Merged weights with the calibrated temperature, for transformers | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b) |
+| Model (GGUF Q8_0) | llama.cpp inference on CPU, no PyTorch needed | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf) |
 
 ## Showcase
 
@@ -268,7 +281,17 @@ Python ≥ 3.11 is required. `[train]` installs the CUDA training/inference depe
 
 ### Models and Data
 
-Models and data are loaded from local directories. You can fetch them with the Hugging Face CLI (the CJ datasets are currently gated; run `hf auth login` first):
+To use the model without training, download the released weights ([Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) / [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b); for CPU, the GGUF build: [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) / [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf)):
+
+```bash
+hf download quincyqiang/chinese-decision-0.8b --local-dir models/chinese-decision-0.8b
+hf download quincyqiang/chinese-decision-0.8b-gguf --local-dir models/chinese-decision-0.8b-gguf
+# or from ModelScope
+modelscope download --model quincyqiang/chinese-decision-0.8b --local_dir models/chinese-decision-0.8b
+modelscope download --model quincyqiang/chinese-decision-0.8b-gguf --local_dir models/chinese-decision-0.8b-gguf
+```
+
+For training and evaluation, the base model and data are also loaded from local directories. You can fetch them with the Hugging Face CLI (the CJ datasets are currently gated; run `hf auth login` first):
 
 ```bash
 hf download Qwen/Qwen3.5-0.8B --local-dir models/Qwen3.5-0.8B
@@ -389,10 +412,10 @@ A request may contain up to 64 questions, each with 2–26 candidates and at mos
 
 Two server entry points share the same API and response format; either can back [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) (the test platform) as its `DECISION_BASE_URL`:
 
-| Entry point | Use | Deployment |
-|---|---|---|
-| `scripts/serve.py` | CPU (GGUF) or local debugging; one forward pass per question | [docs/CPU.md](docs/CPU.md), [deploy/gguf](deploy/gguf/) |
-| `scripts/serve_gpu.py` | Production GPU serving: dynamic batching, training progress, checkpoint hot reload (`POST /v1/admin/reload`) | [deploy/gpu](deploy/gpu/README.md) |
+| Entry point | Use | Weights | Deployment |
+|---|---|---|---|
+| `scripts/serve.py` | CPU (GGUF) or local debugging; one forward pass per question | GGUF: [HF](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf) (BF16 also works) | [docs/CPU.md](docs/CPU.md), [deploy/gguf](deploy/gguf/) |
+| `scripts/serve_gpu.py` | Production GPU serving: dynamic batching, training progress, checkpoint hot reload (`POST /v1/admin/reload`) | BF16: [HF](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b), or the base model plus a trained adapter | [deploy/gpu](deploy/gpu/README.md) |
 
 To check a running server (both routes, probability format, and invalid-request handling):
 
