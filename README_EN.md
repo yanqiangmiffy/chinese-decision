@@ -34,6 +34,7 @@ The model is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) a
 
 ## News
 
+- **2026-10-15**: Open-sourced [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio), a test platform for the model with a decision playground, 8 application scenarios, a robustness lab, an evaluation center and load testing, started with one `docker compose up`. It runs against either the GPU service (`scripts/serve_gpu.py`) or the GGUF service on CPU (`scripts/serve.py`).
 - **2026-10-15**: Full training finished (1 epoch, 13,048,000 decisions, 10,132 steps). The validation-selected step 10000 reaches 72.24% on the CJ-Bench general domain and a 76.98% specialized-domain average, on par with the closed-source Jev. The weights are merged, and a temperature of T = 1.108 was fitted on a separate validation partition.
 - **2026-10-14**: Evaluated the step 5000 checkpoint on the full CJ-Bench test set (307,900 decisions) and compared it with Tables 1 and 2 of the Chinese-Jev paper.
 

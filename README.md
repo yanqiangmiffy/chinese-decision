@@ -34,6 +34,7 @@
 
 ## 最新动态
 
+- **2026-10-15**：开源决策模型测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)：决策实验台、8 个应用场景、鲁棒性实验室、评测中心和性能压测，`docker compose up` 一条命令启动；可以直接接 GPU 服务（`scripts/serve_gpu.py`），也可以接 CPU 上的 GGUF 服务（`scripts/serve.py`）。
 - **2026-10-15**：完整训练结束（1 epoch，13,048,000 条决策，10,132 步）。验证集最优的 step 10000 在 CJ-Bench 上通用领域准确率 72.24%，专业领域平均 76.98%，与闭源 Jev 基本持平；已合并权重，并在验证集的独立划分上拟合温度 T = 1.108。
 - **2026-10-14**：完成 step 5000 checkpoint 在 CJ-Bench 全量测试集（307,900 条）上的评测，并与 Chinese-Jev 论文的 Table 1、Table 2 对比。
 
