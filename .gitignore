@@ -34,3 +34,6 @@ id_dsa
 ssh_config
 ssh_config.local
 tmp
+
+# Local deploy settings (hosts, keys, remote paths)
+deploy/*/deploy.env

@@ -374,11 +374,24 @@ Response format (values are illustrative only):
 
 | Endpoint | Description |
 |---|---|
-| `POST /v1/systemone` | Decision endpoint |
+| `POST /v1/systemone` | Decision endpoint; `?debug=1` adds each candidate's logit and each question's token count |
 | `POST /api/alpha/decisions` | Same as above; hmm-compatible route |
-| `GET /health` | Health check; reports the temperature and whether the model is calibrated |
+| `POST /v1/batch` | `{"requests": [...], "debug": bool}`: several requests at once; one invalid request does not fail the others |
+| `POST /v1/compile` | Compile prompts and count tokens without running the model |
+| `GET /v1/info` | Checkpoint, validation metrics and serving statistics |
+| `GET /v1/training` | Training progress |
+| `GET /health` | Health check; reports the temperature, whether the model is calibrated and the checkpoint step |
 
 A request may contain up to 64 questions, each with 2–26 candidates and at most 16,384 input tokens. Over-length inputs are **never truncated**; invalid requests return `422`.
+
+### Deployment
+
+Two server entry points share the same API and response format; either can back [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) (the test platform) as its `DECISION_BASE_URL`:
+
+| Entry point | Use | Deployment |
+|---|---|---|
+| `scripts/serve.py` | CPU (GGUF) or local debugging; one forward pass per question | [docs/CPU.md](docs/CPU.md), [deploy/gguf](deploy/gguf/) |
+| `scripts/serve_gpu.py` | Production GPU serving: dynamic batching, training progress, checkpoint hot reload (`POST /v1/admin/reload`) | [deploy/gpu](deploy/gpu/README.md) |
 
 To check a running server (both routes, probability format, and invalid-request handling):
 
@@ -477,6 +490,8 @@ chinese-decision/
 │   ├── schema.py           #   question parsing, target distributions, prompt compiler
 │   ├── data.py             #   data sharding, streaming mixing, token batching
 │   ├── model.py            #   model loading and candidate-letter logits
+│   ├── inference.py        #   serving backends: Transformers and GGUF (llama.cpp)
+│   ├── gguf_batch.py       #   padding-free llama.cpp batches for evaluation
 │   ├── training.py         #   validation, LoRA targets, checkpoint helpers
 │   ├── rlcd.py             #   optional RLCD training term (ported from Chinese-Jev)
 │   ├── metrics.py          #   validation and CJ-Bench metrics
@@ -486,12 +501,21 @@ chinese-decision/
 │   ├── prepare_data.py     #   dataset verification and re-sharding
 │   ├── train.py            #   LoRA training (one GPU / torchrun)
 │   ├── finalize.py         #   calibration, merge, export checks
-│   ├── verify_export.py    #   end-to-end HTTP API check
 │   ├── snapshot_best.py    #   freeze the best adapter for evaluation
 │   ├── evaluate.py         #   CJ-Bench evaluation
-│   └── serve.py            #   HTTP server
+│   ├── convert_gguf.py     #   GGUF export (BF16 / Q8_0)
+│   ├── evaluate_gguf.py    #   CJ-Bench with the GGUF weights
+│   ├── benchmark_*.py      #   CPU latency and throughput; compare_gguf_benchmark.py pairs two runs
+│   ├── verify_export.py    #   end-to-end HTTP API check
+│   ├── serve.py            #   HTTP server: CPU / GGUF, local debugging
+│   └── serve_gpu.py        #   HTTP server: production GPU (dynamic batching, hot reload)
+├── deploy/
+│   ├── gpu/                # GPU deployment (local deploy.sh → tmux on the server)
+│   └── gguf/               # CPU deployment (push / install / service)
+├── docs/CPU.md             # CPU deployment and GGUF validation
 ├── tests/                  # Unit tests (no GPU needed)
 ├── examples/request.json   # Example request
+├── assets/                 # README images
 ├── pyproject.toml
 ├── LICENSE
 ├── LICENSES/               # Full texts of third-party licenses

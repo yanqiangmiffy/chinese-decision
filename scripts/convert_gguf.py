@@ -44,9 +44,11 @@ def main():
                 raise ValueError(f"invalid GGUF header: {path}")
         files.append({"file": path.name, "bytes": path.stat().st_size,
                       "sha256": digest(path), "command": command})
-    # The export can be served as --base without retaining the source weights.
+    # The export can be served as --base without retaining the source weights; the training summary
+    # and validation report let the server describe its checkpoint (/v1/info, /v1/training).
     for name in ("config.json", "tokenizer.json", "tokenizer_config.json", "chat_template.jinja",
-                 "special_tokens_map.json", "added_tokens.json", "decision_config.json", "LICENSE"):
+                 "special_tokens_map.json", "added_tokens.json", "decision_config.json", "LICENSE",
+                 "training_summary.json", "validation_report.json"):
         source = base / name
         if source.is_file():
             shutil.copy2(source, out / name)

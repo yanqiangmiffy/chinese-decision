@@ -370,11 +370,24 @@ curl http://127.0.0.1:8787/v1/systemone \
 
 | 接口 | 说明 |
 |---|---|
-| `POST /v1/systemone` | 决策接口 |
+| `POST /v1/systemone` | 决策接口；`?debug=1` 附带每个候选的 logits 和每题 token 数 |
 | `POST /api/alpha/decisions` | 同上，兼容 hmm 路由 |
-| `GET /health` | 健康检查，返回当前温度及是否已校准 |
+| `POST /v1/batch` | `{"requests": [...], "debug": bool}`，一次提交多个请求，单个请求出错不影响其他 |
+| `POST /v1/compile` | 只编译提示词并计数 token，不跑模型 |
+| `GET /v1/info` | 检查点、验证集指标、运行统计 |
+| `GET /v1/training` | 训练进度 |
+| `GET /health` | 健康检查，返回当前温度、是否已校准及检查点 step |
 
 单个请求最多 64 个问题，每个问题 2–26 个候选项，单题输入不超过 16,384 tokens。超长输入**不会被截断**，非法请求返回 `422`。
+
+### 部署
+
+两个服务入口，接口和返回格式一致，都可以直接作为 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)（测试平台）的 `DECISION_BASE_URL`：
+
+| 入口 | 适用场景 | 部署 |
+|---|---|---|
+| `scripts/serve.py` | CPU（GGUF）或单机调试；逐题前向 | [docs/CPU.md](docs/CPU.md)、[deploy/gguf](deploy/gguf/) |
+| `scripts/serve_gpu.py` | GPU 生产服务；动态批处理、训练进度、检查点热更新（`POST /v1/admin/reload`） | [deploy/gpu](deploy/gpu/README.md) |
 
 检查一个正在运行的服务（两个路由、概率格式、非法请求处理）：
 
@@ -473,6 +486,8 @@ chinese-decision/
 │   ├── schema.py           #   题型解析、目标分布、提示编译器
 │   ├── data.py             #   数据分片、流式混合、按 token 分 batch
 │   ├── model.py            #   模型加载与候选字母 logits
+│   ├── inference.py        #   服务后端：Transformers 与 GGUF（llama.cpp）
+│   ├── gguf_batch.py       #   llama.cpp 无 padding 批量评测
 │   ├── training.py         #   验证评估、LoRA 目标层、检查点工具
 │   ├── rlcd.py             #   可选 RLCD 训练项（移植自 Chinese-Jev）
 │   ├── metrics.py          #   验证集指标与 CJ-Bench 指标
@@ -482,12 +497,21 @@ chinese-decision/
 │   ├── prepare_data.py     #   数据校验与重新分片
 │   ├── train.py            #   LoRA 训练（单卡 / torchrun 多卡）
 │   ├── finalize.py         #   温度校准、权重合并、导出检查
-│   ├── verify_export.py    #   HTTP 接口端到端检查
 │   ├── snapshot_best.py    #   冻结 best adapter 用于评测
 │   ├── evaluate.py         #   CJ-Bench 评测
-│   └── serve.py            #   HTTP 服务
+│   ├── convert_gguf.py     #   导出 GGUF（BF16 / Q8_0）
+│   ├── evaluate_gguf.py    #   用 GGUF 权重跑 CJ-Bench
+│   ├── benchmark_*.py      #   CPU 延迟与吞吐测试；compare_gguf_benchmark.py 做配对比较
+│   ├── verify_export.py    #   HTTP 接口端到端检查
+│   ├── serve.py            #   HTTP 服务：CPU / GGUF、单机调试
+│   └── serve_gpu.py        #   HTTP 服务：GPU 生产部署（动态批处理、热更新）
+├── deploy/
+│   ├── gpu/                # GPU 部署脚本（本机 deploy.sh → 服务器 tmux）
+│   └── gguf/               # CPU 部署脚本（push / install / service）
+├── docs/CPU.md             # CPU 部署与 GGUF 验证
 ├── tests/                  # 单元测试（不需要 GPU）
 ├── examples/request.json   # 请求示例
+├── assets/                 # README 配图
 ├── pyproject.toml
 ├── LICENSE
 ├── LICENSES/               # 第三方许可证全文
