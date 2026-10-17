@@ -1,4 +1,7 @@
-# CPU deployment with Q8_0 GGUF
+# CPU deployment with Q8_0 GGUF (0.8B)
+
+For the completed 2B model and its separate quantization/CPU checks, see
+[Chinese Decision 2B CPU deployment](CPU_2B.md). The measurements below describe 0.8B. See the [model overview](MODELS.md) for all four packages and their separate evaluation states.
 
 The GGUF backend preserves the existing `/v1/systemone` and `/api/alpha/decisions`
 routes, three question types, prompt compiler, and candidate-only temperature
@@ -139,3 +142,188 @@ payload (three questions per request) had median latency 1.777 s, including
 tokenization, three serial model evaluations and response handling. Increasing
 the context capacity from 2048 to 16384 did not change example probabilities.
 The raw HTTP results are in `reports/cpu-api.json`. All 34 automated tests passed.
+
+## Linux server measurements (2026-10-15)
+
+Server: Intel Xeon Gold 5318Y, 48 physical cores / 96 logical CPUs, 512 GB RAM,
+NVIDIA A800 80 GB PCIe. GPU tests use physical GPU 0. Other GPUs continue their
+existing training workloads; these measurements describe this shared server.
+
+The Linux CUDA runtime was built on the server from llama-cpp-python 0.3.36
+source, using CUDA 12.8, architecture 80, and native AVX512/VNNI CPU support.
+Its independent installation is `local/gguf-runtime-0.3.36/python` under the
+server's project root.
+The existing training Python environment was not modified. The deployment
+weights were uploaded and verified against the local Q8_0 SHA256 checksum.
+
+### Full CJ-Bench result
+
+The full GPU0 comparison covers all 307900 released decisions: 304822 hard
+targets and 3078 soft targets. Input tokens, candidate order, source checkpoint
+and deployment temperature 1.10813307762146 match. There are no filtered or
+truncated cases; total input tokens are 68515700 and the longest input is 6850
+tokens. Dataset and weight checksums were verified again after evaluation.
+
+| Metric | Transformers BF16 | Q8_0 GGUF | Change |
+|---|---:|---:|---:|
+| Hard accuracy | 83.1052% | 83.1233% | +0.0180 pp |
+| Domain macro accuracy | 75.7376% | 75.8092% | +0.0716 pp |
+| Distribution NLL | 0.431318 | 0.431293 | -0.000025 |
+| ECE (15 bins) | 0.2706% | 0.2696% | -0.0010 pp |
+| Brier | 0.223833 | 0.223815 | -0.000018 |
+| Expected score MAE | 0.584427 | 0.583973 | -0.000453 |
+
+Accuracy and ECE use hard targets; NLL and Brier include soft targets. Score
+MAE uses score questions. Lower NLL/ECE/Brier/MAE is better.
+
+| Domain | Decisions | Reference accuracy | Q8 accuracy | Change |
+|---|---:|---:|---:|---:|
+| general | 100000 | 72.2602% | 72.2333% | -0.0268 pp |
+| medical | 200000 | 88.8530% | 88.8885% | +0.0355 pp |
+| legal | 4300 | 67.8372% | 67.8372% | +0.0000 pp |
+| finance | 3600 | 74.0000% | 74.2778% | +0.2778 pp |
+
+Per-domain calibration gives a more qualified picture than pooled ECE. ECE
+increases slightly in each domain even though pooled ECE decreases slightly;
+opposite bin errors can cancel when domains are pooled.
+
+| Domain | Reference ECE | Q8 ECE | Change |
+|---|---:|---:|---:|
+| general | 1.6827% | 1.7092% | +0.0265 pp |
+| medical | 1.1195% | 1.1389% | +0.0194 pp |
+| legal | 4.0525% | 4.0561% | +0.0036 pp |
+| finance | 2.4489% | 2.6043% | +0.1554 pp |
+| Four-domain mean | 2.3259% | 2.3771% | +0.0512 pp |
+
+The last row is the arithmetic mean of four domain ECE values, distinct from
+pooled ECE. Accuracy preservation does not establish unchanged calibration.
+
+Across all 307900 decisions, top-choice agreement is 98.9227%.
+Among hard targets, 1185 previously correct answers become incorrect and
+1240 previously incorrect answers become correct. Mean absolute candidate
+probability difference is 0.002412 (0.241 percentage points); the 95th
+percentile of each question's maximum difference is 0.023567, and the largest
+difference is 0.226881. Similar aggregate accuracy therefore coexists with
+changes to some individual answers and confidence values.
+
+The largest-change example is a medical choice case. Both backends choose the
+same incorrect option C, whose probability rises from 0.521165 to 0.747657;
+the correct option E falls from 0.465571 to 0.238690. Its ID and complete
+candidate distributions are retained in `comparison.json`.
+
+This is an end-to-end comparison of the deployed weight formats and backends.
+The separate BF16 GGUF control below covers 1200 balanced inputs. Full CPU
+accuracy/calibration was not measured; CPU checks cover 25 inputs. The
+comparison does not fit temperatures or thresholds on test labels.
+
+The full-pass elapsed times include concurrent GPU work and temporary pauses
+for isolated latency measurements. Batch sizes also differ, so full-pass
+throughput is not used as a direct speed comparison. See the request latency
+measurements below.
+
+Raw reports: `reports/server-gguf-20261015/summary.json`,
+`reference/full.json`, `q8-b8192/full.json` and `comparison.json`. Server run:
+`runs/cj-bench/gguf-q8-20261015/` under the server's project root.
+Per-question compressed predictions remain on the server; their SHA256
+checksums and the paired largest-change examples are in the reports.
+
+### Independent request latency
+
+Latency uses the same 25 CJ-Bench inputs for every backend: two seeded quick-set
+inputs from each of the 12 domain/type strata, plus the longest quick-set input.
+Each shape is warmed once, then measured three times. Inputs have 92–6521 tokens;
+the short subset contains 16 inputs / 48 measurements with 92–255 tokens.
+Timings cover pretokenized independent inference and candidate probabilities,
+excluding tokenization, HTTP and network. Every request clears hybrid state.
+GPU batch-one measurements run with the full-evaluation workers temporarily
+stopped. Server CPU measurements use the same 16384-token runtime capacity as
+the service. The CPU FP32 reference uses the official Torch implementations
+instead of the installed CUDA-only optional convolution/FLA wrappers.
+
+| Backend | Threads | Short p50 | All 25 inputs p50 | 6521-token input median | Process peak RSS |
+|---|---:|---:|---:|---:|---:|
+| Transformers CPU FP32 | 16 | 319.8 ms | 371.3 ms | 17.05 s | 7.44 GiB |
+| llama.cpp Q8_0 CPU | 8 | 555.7 ms | 697.0 ms | 23.20 s | 2.20 GiB |
+| llama.cpp Q8_0 CPU | 16 | 347.2 ms | 427.0 ms | 13.95 s | 2.19 GiB |
+| Transformers GPU BF16 | 8 | 44.3 ms | 44.4 ms | 93.4 ms | — |
+| llama.cpp Q8_0 GPU | 8 | 15.6 ms | 17.9 ms | 369.6 ms | — |
+
+On this sample, 16 CPU threads outperform 8 for Q8. Relative to CPU FP32 at
+16 threads, Q8 short latency is 8.55% higher, while the longest input is about
+1.22 times as fast and process peak RSS is about 70.5% lower. Peak RSS includes
+the benchmark harness and its Torch/tokenizer imports. The GPU Q8 path is about
+2.84 times as fast on short inputs, but about 3.96 times as slow on the longest
+input. These are sample measurements; the balanced sample and added longest
+input do not represent the full benchmark's input-length distribution.
+
+All 25 top candidates match across CPU FP32, CPU Q8 and GPU Q8 in these
+batch-one checks. The maximum absolute candidate probability difference is
+0.02480 between CPU FP32 and CPU Q8, and 0.02760 between CPU Q8 and GPU Q8.
+Repeated outputs are identical for each backend. Q8 CPU outputs at 8 and 16
+threads are also identical. Full CJ-Bench accuracy is measured separately on
+GPU; these 25 inputs do not establish identical full CPU accuracy/calibration.
+
+Raw latency reports are under the locally generated
+`reports/server-gguf-20261015/` and the server run directory
+`runs/cj-bench/gguf-q8-20261015/` (under the server's project root).
+
+### Reusing the server installation
+
+The run keeps its evaluation code separate from the active training checkout.
+Use its frozen reference inputs and a fresh output directory to repeat the Q8
+evaluation. The system C++ library preload below addresses this server's older
+Conda `libstdc++`; it applies only to the launched process.
+
+```bash
+ROOT=/path/to/chinese-decision   # project root on the server
+JOB="$ROOT/runs/cj-bench/gguf-q8-20261015"
+cd "$ROOT"
+export PYTHONPATH="$ROOT/local/gguf-runtime-0.3.36/python:$JOB/code-used:$ROOT"
+export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+export LD_LIBRARY_PATH="/usr/local/cuda-12.8/lib64:${LD_LIBRARY_PATH:-}"
+
+CUDA_VISIBLE_DEVICES=0 .venv/bin/python "$JOB/code-used/scripts/evaluate_gguf.py" \
+  --reference "$JOB/reference" --out "$JOB/q8-repeat" \
+  --parallel 32 --token-budget 8192 --pool-size 32768 --threads 4
+
+CUDA_VISIBLE_DEVICES='' .venv/bin/python "$JOB/code-used/scripts/benchmark_gguf_server.py" \
+  --backend gguf-cpu --reference "$JOB/reference" \
+  --out "$JOB/cpu-repeat.json" --threads 16 --repeats 3
+```
+
+The evaluator reads final-position candidate logits directly: it does not sample
+or generate text. It verifies dataset/model checksums, preserves candidate order,
+uses the existing temperature 1.10813307762146, and rejects overlength inputs.
+Native multi-sequence batches contain equal true input lengths with distinct
+sequence IDs and no padding. The runtime clears all attention/recurrent state
+between independent batches. CPU serving retains the separate batch-one path.
+
+### BF16 GGUF control on 1200 balanced inputs
+
+The GPU control uses 100 fixed seed-42 inputs from each domain/type stratum,
+1192 hard targets and 8 soft targets. All three paths use the same source
+weights, input tokens, option ordering and deployment temperature. The balanced
+sample has different domain weights from the 307900-decision full benchmark;
+its overall accuracy is not directly comparable to the full overall accuracy.
+
+| GPU backend | Accuracy (hard) | Distribution NLL | ECE (15 bins) | Brier |
+|---|---:|---:|---:|---:|
+| Transformers BF16 | 73.0705% | 0.605766 | 3.4345% | 0.337966 |
+| llama.cpp BF16 GGUF | 73.4060% | 0.605027 | 2.5705% | 0.337455 |
+| llama.cpp Q8_0 GGUF | 73.5738% | 0.604997 | 2.3818% | 0.337432 |
+
+BF16 GGUF versus Q8 has 1184/1200 matching top candidates (98.67%); five hard
+answers become incorrect and seven become correct. Mean absolute probability
+difference per candidate is 0.003516, the 95th percentile of each question's
+maximum difference is 0.024303, and the largest difference is 0.127219. Thus,
+similar aggregate accuracy does not mean identical probability outputs.
+
+The Transformers-to-BF16-GGUF comparison also changes some answers: top-choice
+agreement is 98.17%, mean absolute probability difference is 0.002826 and the
+maximum is 0.049478. Backend arithmetic and batching contribute to end-to-end
+differences alongside weight quantization. A separate GPU check of 27 inputs
+found identical repeated batch logits, all top choices matching batch-one
+results, and maximum batch/batch-one probability difference 0.016778 for Q8.
+These diagnostic counts are reported as checks, not an assertion of exact
+CPU/GPU or batch-size equivalence on the entire dataset. No temperatures or
+thresholds were fitted on benchmark labels.
