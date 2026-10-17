@@ -157,6 +157,29 @@ class ServingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not accept"):
             create_app("missing-config", adapter="adapter", backend="gguf", gguf="model.gguf")
 
+    def test_model_identity_is_per_export_across_all_routes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            small, large = Path(temporary) / "small", Path(temporary) / "large"
+            for root, name in ((small, "chinese-decision-0.8b"), (large, "chinese-decision-2b")):
+                root.mkdir()
+                (root / "decision_config.json").write_text(json.dumps({"model_name": name, "temperature": 1.1}))
+            with patch("scripts.serve.GGUFBackend", FakeBackend):
+                with TestClient(create_app(small, backend="gguf", gguf="mock")) as first, \
+                     TestClient(create_app(large, backend="gguf", gguf="mock")) as second:
+                    for client, expected in ((first, "chinese-decision-0.8b"), (second, "chinese-decision-2b")):
+                        for route in ("/health", "/v1/info"):
+                            self.assertEqual(client.get(route).json()["model"], expected)
+                        for route in ("/v1/systemone", "/api/alpha/decisions"):
+                            self.assertEqual(client.post(route, json=PAYLOAD).json()["model"], expected)
+                        result = client.post("/v1/batch", json={"requests": [PAYLOAD]}).json()
+                        self.assertEqual(result["model"], expected)
+                        self.assertEqual(result["results"][0]["model"], expected)
+
+    def test_unmerged_2b_adapter_gets_the_correct_identity(self):
+        with patch("scripts.serve.GGUFBackend", FakeBackend):
+            with TestClient(create_app("models/Qwen3.5-2B", backend="gguf", gguf="mock")) as client:
+                self.assertEqual(client.get("/health").json()["model"], "chinese-decision-2b")
+
 
 if __name__ == "__main__":
     unittest.main()

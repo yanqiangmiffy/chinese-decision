@@ -44,8 +44,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from decision.api import build_answer
 from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
 from decision.schema import LETTERS, PROMPT_VERSION, compile_prompt, options_for
+from decision.utils import model_name_for
 
-MODEL_NAME = "chinese-decision-0.8b"
 MAX_LENGTH = 16384
 MAX_QUESTIONS = 64
 MAX_BATCH_REQUESTS = 512
@@ -79,11 +79,16 @@ class Checkpoint:
         self.model = load_model(base, adapter, device=device).eval()
         self.letters = letter_tokens(self.tokenizer, device)
         config = read_json(Path(base) / "decision_config.json", {}) or {}
+        self.model_name = model_name_for(base, config)
         self.temperature = float(config.get("temperature", 1.0))
         self.calibrated = bool(config)
         self.max_length = int(config.get("max_length", MAX_LENGTH))
         self.selection = read_json(Path(adapter) / "selection.json", {}) if adapter else {}
         self.validation = read_json(Path(adapter) / "metrics.json", {}) if adapter else {}
+        if not adapter:
+            summary = read_json(Path(base) / "training_summary.json", {}) or {}
+            self.selection = summary.get("selected_checkpoint", {})
+            self.validation = (read_json(Path(base) / "validation_report.json", {}) or {}).get("after", {})
         self.loaded_at = now_iso()
         self.load_seconds = time.perf_counter() - started
 
@@ -274,7 +279,7 @@ def make_response(checkpoint, compiled, logits_rows, latency_ms, debug=False):
             answer["logits"] = {key: round(value, 4) for (key, _), value in zip(options, logits, strict=True)}
             answer["input_tokens"] = len(ids)
         answers[name] = answer
-    return {"model": MODEL_NAME, "answers": answers,
+    return {"model": checkpoint.model_name, "answers": answers,
             "usage": {"input_tokens": sum(len(c[3]) for c in compiled), "output_tokens": 0},
             "latency_ms": latency_ms}
 
@@ -360,7 +365,7 @@ def create_app(args):
             engine.compile_ms.clear()
         yield
 
-    app = FastAPI(title="Chinese Decision 0.8B", version="0.2.0", lifespan=lifespan,
+    app = FastAPI(title=checkpoint.model_name, version="0.2.0", lifespan=lifespan,
                   description="一次前向，直接输出候选项概率。兼容 hmm / System One 接口。")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -381,7 +386,7 @@ def create_app(args):
     @app.get("/health")
     def health():
         current = engine.checkpoint
-        return {"status": "ok", "model": MODEL_NAME, "temperature": current.temperature,
+        return {"status": "ok", "model": current.model_name, "temperature": current.temperature,
                 "calibrated": current.calibrated, "step": current.selection.get("step")}
 
     @app.post("/api/alpha/decisions")
@@ -429,7 +434,7 @@ def create_app(args):
             response.pop("latency_ms")
             results.append(response)
         engine.record(latency, total, tokens, requests=len(requests))
-        return {"model": MODEL_NAME, "results": results, "usage": {"input_tokens": tokens, "output_tokens": 0},
+        return {"model": current.model_name, "results": results, "usage": {"input_tokens": tokens, "output_tokens": 0},
                 "decisions": total, "latency_ms": latency}
 
     @app.post("/v1/compile")
@@ -447,7 +452,7 @@ def create_app(args):
     @app.get("/v1/info")
     def info():
         current = engine.checkpoint
-        return {"model": MODEL_NAME, "version": app.version, "prompt_version": PROMPT_VERSION,
+        return {"model": current.model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
                 "limits": {"max_length": current.max_length, "max_questions": MAX_QUESTIONS,
                            "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS},
                 "checkpoint": current.describe(), "validation": current.validation,

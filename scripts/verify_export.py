@@ -103,6 +103,9 @@ def verify_model(args, payload):
             if not health or health.get("status") != "ok" or not health.get("calibrated"):
                 raise RuntimeError(f"exported model did not become ready; see {log_path}")
             first, max_route_delta = check_api(url, payload)
+            if configuration.get("model_name") and (health.get("model") != configuration["model_name"] or
+                                                      first.get("model") != configuration["model_name"]):
+                raise ValueError("exported API reported the wrong model identity")
             report = {"status": "passed", "model_path": str(model), "source_run": configuration.get("source_run"),
                       "verified_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
                       "health": health, "response": first, "route_max_probability_delta": max_route_delta,

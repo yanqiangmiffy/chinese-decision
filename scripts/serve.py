@@ -19,8 +19,8 @@ from fastapi import FastAPI, HTTPException
 from decision.api import build_answer
 from decision.inference import GGUFBackend, TransformersBackend, candidate_probabilities
 from decision.schema import LETTERS, MAX_LENGTH, PROMPT_VERSION, compile_prompt, options_for
+from decision.utils import model_name_for
 
-MODEL_NAME = "chinese-decision-0.8b"
 MAX_QUESTIONS = 64
 MAX_BATCH_REQUESTS = 512
 MAX_BATCH_QUESTIONS = 4096
@@ -97,6 +97,7 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
     root = Path(base)
     config_path = root / "decision_config.json"
     config = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+    model_name = model_name_for(base, config)
     temperature = config.get("temperature", 1.)
     max_length = config.get("max_length", MAX_LENGTH)
     candidate_probabilities([0., 0.], temperature)
@@ -174,7 +175,7 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
                 answer["logits"] = {key: round(value, 4) for (key, _), value in zip(options, logits)}
                 answer["input_tokens"] = len(ids)
             answers[name] = answer
-        return {"model": MODEL_NAME, "answers": answers,
+        return {"model": model_name, "answers": answers,
                 "usage": {"input_tokens": sum(len(c[3]) for c in compiled), "output_tokens": 0},
                 "latency_ms": latency_ms}
 
@@ -185,11 +186,11 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
         finally:
             engine.close()
 
-    app = FastAPI(title="Chinese Decision 0.8B", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title=model_name, version="0.2.0", lifespan=lifespan)
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "model": MODEL_NAME, "temperature": temperature,
+        return {"status": "ok", "model": model_name, "temperature": temperature,
                 "calibrated": bool(config_path.exists()), "backend": engine.name,
                 "device": engine.device, "max_length": max_length, "step": checkpoint["step"]}
 
@@ -243,7 +244,7 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
             response.pop("latency_ms")
             results.append(response)
         stats.record(latency, total, tokens, requests=len(requests))
-        return {"model": MODEL_NAME, "results": results, "usage": {"input_tokens": tokens, "output_tokens": 0},
+        return {"model": model_name, "results": results, "usage": {"input_tokens": tokens, "output_tokens": 0},
                 "decisions": total, "latency_ms": latency}
 
     @app.post("/v1/compile")
@@ -261,7 +262,7 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
 
     @app.get("/v1/info")
     def info():
-        return {"model": MODEL_NAME, "version": app.version, "prompt_version": PROMPT_VERSION,
+        return {"model": model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
                 "limits": {"max_length": max_length, "max_questions": MAX_QUESTIONS,
                            "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS},
                 "checkpoint": checkpoint, "validation": validation,

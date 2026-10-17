@@ -43,10 +43,11 @@ of `decision/rlcd.py`: it reads this project's option-letter logits and batch it
 returns only the RLCD term, and defaults the spherical weight to the value Chinese-Jev
 trains with.
 
-## Qwen3.5-0.8B
+## Qwen3.5-0.8B and Qwen3.5-2B
 
-Base model: [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B), licensed
-under Apache-2.0. Model weights are not distributed with this repository; exported
+Base models: [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) and
+[Qwen/Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B), licensed under Apache-2.0.
+Model weights are not distributed with this repository; exported
 model directories keep the original `LICENSE` file.
 
 ## CJ-Dataset and CJ-Bench

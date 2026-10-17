@@ -17,6 +17,7 @@ from decision.metrics import summarize
 from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
 from decision.schema import LETTERS
 from decision.training import evaluate
+from decision.utils import log, model_name_for
 
 
 def fit_temperature(rows):
@@ -39,14 +40,30 @@ def fit_temperature(rows):
     return float(log_temperature.exp().clamp(0.05, 20).detach()), len(hard)
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run", default="runs/cj-ddp")
     parser.add_argument("--out", default="models/chinese-decision-0.8b")
     parser.add_argument("--calibration-per-stratum", type=int, default=200)
-    args = parser.parse_args()
+    parser.add_argument("--batch-size", type=int, default=32, help="single-GPU calibration/validation batch limit")
+    parser.add_argument("--token-budget", type=int, default=16384, help="single-GPU evaluation token budget")
+    parser.add_argument("--base-model-id", help="original model repository recorded in the export metadata")
+    args = parser.parse_args(argv)
+    if min(args.calibration_per_stratum, args.batch_size, args.token_budget) <= 0:
+        parser.error("calibration, batch and token limits must be positive")
+    return args
+
+
+def main():
+    args = parse_args()
     run, out = Path(args.run), Path(args.out)
+    if out.exists():
+        raise FileExistsError(f"export destination already exists; use a new output directory: {out}")
     config = json.loads((run / "config.json").read_text())
+    model_name = model_name_for(config["base"])
+    base_name = Path(config["base"]).name
+    base_model_id = args.base_model_id or (f"Qwen/{base_name}" if base_name.startswith("Qwen3.5-") else config["base"])
+    log("export_stage", stage="loading", run=str(run), model_name=model_name)
     tokenizer = load_tokenizer(config["base"])
     letters = letter_tokens(tokenizer, "cuda")
     model = load_model(config["base"], str(run / "best"))
@@ -61,16 +78,18 @@ def main():
     delta = float((adapter_logits - merged_logits).abs().max())
     if not torch.isfinite(merged_logits).all() or not torch.equal(adapter_logits.argmax(-1), merged_logits.argmax(-1)):
         raise ValueError("merged model changed probe decisions")
-    out.mkdir(parents=True, exist_ok=True)
+    log("export_stage", stage="saving_merged_weights", out=str(out))
+    out.mkdir(parents=True, exist_ok=False)
     model.save_pretrained(out, safe_serialization=True)
     tokenizer.save_pretrained(out)
     shutil.copyfile(Path(config["base"]) / "LICENSE", out / "LICENSE")
     (out / "training_config.json").write_text(json.dumps(config, indent=2))
-    summary = {"source_run": str(run), "base_model": "Qwen/Qwen3.5-0.8B",
+    summary = {"source_run": str(run), "base_model": base_model_id, "model_name": model_name,
                "dataset": "bbldCVer-hf/CJ-Dataset", "dataset_revision": config.get("data_revision"),
                "method_reference": "n4ze3m/hmm", "prompt_version": config["prompt_version"],
                "selected_checkpoint": json.loads((run / "best/selection.json").read_text()),
                "training_progress": json.loads((run / "progress.json").read_text())}
+    summary["training_algorithm"] = config.get("training_algorithm")
     (out / "training_summary.json").write_text(json.dumps(summary, indent=2))
     # Evaluate the artifact reloaded from disk; calibrate its actual BF16 logits.
     del model
@@ -81,18 +100,20 @@ def main():
     reload_delta = float((merged_logits - reloaded_logits).abs().max())
     if reload_delta > 1e-5:
         raise ValueError(f"save/reload logit mismatch: {reload_delta}")
+    log("export_stage", stage="calibration", batch_size=args.batch_size, token_budget=args.token_budget)
     calibration, audit = validation_items(config["data"], config["domains"], tokenizer, config["max_length"],
                                            args.calibration_per_stratum, subset=(0,), seed=config["seed"])
-    _, rows = evaluate(model, tokenizer, letters, calibration, config["batch_size"], config["token_budget"])
+    _, rows = evaluate(model, tokenizer, letters, calibration, args.batch_size, args.token_budget)
     temperature, calibration_hard_n = fit_temperature(rows)
-    raw_metrics, val_rows = evaluate(model, tokenizer, letters, validation, config["batch_size"], config["token_budget"])
+    raw_metrics, val_rows = evaluate(model, tokenizer, letters, validation, args.batch_size, args.token_budget)
     report = {"temperature": temperature, "calibration_hard_n": calibration_hard_n, "calibration_partition": [0],
               "evaluation_partition": [1, 2, 3, 4], "before": raw_metrics,
               "after": summarize(val_rows, temperature), "sampling": audit,
               "evaluated_artifact": str(out), "save_reload_probe_max_delta": reload_delta,
+              "evaluation_batch_size": args.batch_size, "evaluation_token_budget": args.token_budget,
               "note": "Released validation subset; used for model selection. Not a CJ-Bench test score."}
     (run / "calibration.json").write_text(json.dumps(report, indent=2))
-    (out / "decision_config.json").write_text(json.dumps({"temperature": temperature, "prompt_version": config["prompt_version"],
+    (out / "decision_config.json").write_text(json.dumps({"model_name": model_name, "temperature": temperature, "prompt_version": config["prompt_version"],
                                                            "max_length": config["max_length"], "max_options": len(LETTERS),
                                                            "source_run": str(run), "merge_probe_max_logit_delta": delta}, indent=2))
     (out / "validation_report.json").write_text(json.dumps(report, indent=2))

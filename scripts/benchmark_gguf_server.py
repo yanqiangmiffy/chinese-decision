@@ -23,7 +23,7 @@ def percentile(values, fraction):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--backend',choices=['transformers','gguf-gpu','gguf-cpu'],required=True)
+    parser.add_argument('--backend',choices=['transformers','transformers-cpu','gguf-gpu','gguf-cpu'],required=True)
     parser.add_argument('--reference',required=True)
     parser.add_argument('--out',required=True)
     parser.add_argument('--threads',type=int,default=8)
@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--model',default='models/chinese-decision-0.8b')
     parser.add_argument('--gguf',default='models/chinese-decision-0.8b-gguf/chinese-decision-0.8b-Q8_0.gguf')
     args=parser.parse_args()
-    if args.backend=='gguf-cpu' and os.environ.get('CUDA_VISIBLE_DEVICES') != '':
+    if args.backend.endswith('-cpu') and os.environ.get('CUDA_VISIBLE_DEVICES') != '':
         raise ValueError('CPU benchmark requires CUDA_VISIBLE_DEVICES to be empty')
     import torch
     import psutil
@@ -51,12 +51,12 @@ def main():
         selected.append(longest)
     temperature=json.loads((Path(args.model)/'decision_config.json').read_text())['temperature']
     start=time.perf_counter()
-    if args.backend=='transformers':
+    if args.backend.startswith('transformers'):
         from decision.inference import TransformersBackend
-        engine=TransformersBackend(args.model,device='cuda',threads=args.threads)
+        engine=TransformersBackend(args.model,device='cpu' if args.backend.endswith('-cpu') else 'cuda',threads=args.threads)
         def infer(row):
             return engine.logits(row['input_ids'],len(row['target']))
-        runtime={'torch':torch.__version__}
+        runtime={'torch':torch.__version__,'dtype':str(next(engine.model.parameters()).dtype),'device':engine.device}
     else:
         import llama_cpp
         tokenizer=AutoTokenizer.from_pretrained(args.model,local_files_only=True)

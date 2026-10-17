@@ -14,6 +14,8 @@ import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from decision.utils import model_name_for
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -126,7 +128,7 @@ def worker(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default=str(ROOT / "models/chinese-decision-0.8b"))
-    parser.add_argument("--gguf-dir", default=str(ROOT / "models/chinese-decision-0.8b-gguf"))
+    parser.add_argument("--gguf-dir", help="defaults to the matching <model-name>-gguf sibling directory")
     parser.add_argument("--report", default=str(ROOT / "reports/cpu-benchmark.json"))
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--context-size", type=int, default=2048)
@@ -141,16 +143,20 @@ def main():
     if args.worker:
         worker(args)
         return
+    config_path = Path(args.base) / "decision_config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+    model_name = model_name_for(args.base, config)
+    gguf_dir = Path(args.gguf_dir) if args.gguf_dir else Path(args.base).parent / (model_name + "-gguf")
     reports = {}
     for label, backend, filename in (("transformers_fp32", "transformers", None),
-                                     ("gguf_bf16", "gguf", "chinese-decision-0.8b-BF16.gguf"),
-                                     ("gguf_q8_0", "gguf", "chinese-decision-0.8b-Q8_0.gguf")):
+                                     ("gguf_bf16", "gguf", model_name + "-BF16.gguf"),
+                                     ("gguf_q8_0", "gguf", model_name + "-Q8_0.gguf")):
         child_report = report_path.with_name(report_path.stem + "-" + label + ".json")
         command = [sys.executable, str(Path(__file__).resolve()), "--worker", backend, "--base", args.base,
                    "--report", str(child_report), "--threads", str(args.threads), "--repeats", str(args.repeats),
                    "--context-size", str(args.context_size)]
         if filename:
-            command += ["--gguf", str(Path(args.gguf_dir) / filename)]
+            command += ["--gguf", str(gguf_dir / filename)]
         env = os.environ.copy()
         env.update(TOKENIZERS_PARALLELISM="false", PYTHONUNBUFFERED="1")
         subprocess.run(command, check=True, cwd=ROOT, env=env)
