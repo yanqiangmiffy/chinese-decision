@@ -31,18 +31,18 @@ The model family is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-
 
 - ⚡ **One forward pass, zero output tokens**: reads the logits of candidate letters `A`–`Z` at the last position and applies softmax. No autoregressive decoding, no chain of thought.
 - 🧩 **Three question types**: `noul` (yes/no), `choice` (single choice), and `score` (ordered levels, returns the expected level).
-- 🏆 **Two model sizes**: the 2B T=1 adapter reaches **84.11%** overall CJ-Bench accuracy and **78.19%** across medical/legal/finance; 0.8B reaches **83.11% / 76.98%**. Some legal yes/no and finance rating tasks still favor 0.8B.
-- 📏 **Separate deployment results**: merged 2B BF16 at its validation-fitted temperature reaches **84.11% ACC / 0.64% ECE**. Adapter, merged and quantized scores are reported separately.
-- 🪶 **GPU and CPU**: both sizes ship BF16 and Q8_0 GGUF packages. 2B Q8_0 is only **2.01 GB** (about 46.5% smaller than BF16), reaches **84.11%** on the full CJ-Bench, and agrees with the BF16 release on the top choice **99.00%** of the time; it runs on CPU through llama.cpp without PyTorch.
+- 🏆 **Two sizes, one model for all four domains**: chinese-decision-2b reaches **84.11%** overall accuracy on the full CJ-Bench and **78.25%** across medical / legal / finance, above the paper's Chinese-Jev (70.82%) and the closed-source Jev (77.01%); chinese-decision-0.8b reaches **83.11% / 76.90%**. Some legal yes/no and finance rating tasks still favor 0.8B.
+- 📏 **Calibrated probabilities**: the released weights ship a validation-fitted temperature; overall ECE is **0.64%** for 2B and **0.27%** for 0.8B, and ECE is lower than every model in the paper in all four domains.
+- 🪶 **GPU and CPU**: both sizes ship BF16 and Q8_0 GGUF packages. chinese-decision-2b-gguf is only **2.01 GB** (about 46.5% smaller than BF16), reaches **84.11%** on the full CJ-Bench, and agrees with BF16 on the top choice **99.00%** of the time; it runs on CPU through llama.cpp without PyTorch.
 - 🔌 **hmm / System One compatible API**: ships with a ready-to-run HTTP server.
 
 ## News
 
-- **2026-10-17**: Released the 2B weights ([BF16](https://huggingface.co/quincyqiang/chinese-decision-2b) / [Q8_0 GGUF](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf), mirrored on ModelScope). The 2.01 GB 2B Q8_0 completed the full 307,900-decision CJ-Bench, with **84.1094% ACC / 0.6534% ECE**, four fewer correct hard-label decisions than BF16; CPU/HTTP checks are in [2B CPU deployment and checks](docs/CPU_2B.md) (Chinese).
-- **2026-10-17**: Qwen3.5-2B + LoRA + RLCD completed training and full CJ-Bench (13,048,000 training decisions; validation best step 4994). The uncalibrated adapter reaches **84.11%** overall accuracy and **78.19%** across medical/legal/finance; the calibrated BF16 export has **0.64%** overall ECE. Full results for every checkpoint are in [2B Training History](#2b-training-history) below; source-level regressions, score-question gaps and deployment are in the [2B release record](docs/TRAINING_2B.md) (Chinese).
-- **2026-10-15**: Open-sourced [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio), a test platform for the model with a decision playground, 8 application scenarios, a robustness lab, an evaluation center and load testing, started with one `docker compose up`. It runs against either the GPU service (`scripts/serve_gpu.py`) or the GGUF service on CPU (`scripts/serve.py`).
-- **2026-10-15**: Full training finished (1 epoch, 13,048,000 decisions, 10,132 steps). The validation-selected step 10000 reaches 72.24% on the CJ-Bench general domain and a 76.98% specialized-domain average, on par with the closed-source Jev. The weights are merged, and a temperature of T = 1.108 was fitted on a separate validation partition.
-- **2026-10-14**: Evaluated the step 5000 checkpoint on the full CJ-Bench test set (307,900 decisions) and compared it with Tables 1 and 2 of the Chinese-Jev paper.
+- 🚀 **2026-10-17**: Released **chinese-decision-2b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b)) and the CPU build **chinese-decision-2b-gguf** (Q8_0, 2.01 GB; 🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf)). 2B reaches **84.11%** overall accuracy, a **78.25%** specialized average and **0.64%** ECE; Q8_0 reaches **84.11%** on the full benchmark with **99.00%** top-choice agreement with BF16. CPU checks: [2B CPU deployment](docs/CPU_2B.md) (Chinese).
+- 📊 **2026-10-17**: Qwen3.5-2B + LoRA + RLCD finished training (13,048,000 decisions, best step 4994), and all five stage checkpoints completed the full CJ-Bench. See [2B Training History](#2b-training-history) and the [2B release record](docs/TRAINING_2B.md) (Chinese).
+- 🧪 **2026-10-15**: Open-sourced [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio), a test platform for the model with a decision playground, 8 application scenarios, a robustness lab, an evaluation center and load testing, started with one `docker compose up`. It runs against either the GPU service (`scripts/serve_gpu.py`) or the GGUF service on CPU (`scripts/serve.py`).
+- 🎉 **2026-10-15**: Released **chinese-decision-0.8b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)) and **chinese-decision-0.8b-gguf** (Q8_0, 812 MB; 🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf)). Full training ran 1 epoch (13,048,000 decisions, 10,132 steps); the validation-selected step 10000 reaches **72.24%** on the CJ-Bench general domain and a **76.98%** specialized average. After merging, a temperature of T = 1.108 was fitted on a separate validation partition.
+- 📈 **2026-10-14**: Evaluated the step 5000 checkpoint on the full CJ-Bench test set (307,900 decisions) and compared it with Tables 1 and 2 of the Chinese-Jev paper.
 
 ## Models
 
@@ -92,7 +92,7 @@ For every user message, the decision model first picks a tool, checks whether th
 ```mermaid
 flowchart LR
     A["context + question + candidates"] --> B["prompt compiler<br/>hmm-zh-v1"]
-    B --> C["Qwen3.5 0.8B / 2B<br/>+ LoRA"]
+    B --> C["Qwen3.5 0.8B / 2B<br/>LoRA fine-tuned, merged"]
     C --> D["last-position logits<br/>A … Z"]
     D --> E["mask unused letters<br/>softmax(z / T)"]
     E --> F["noul / choice / score"]
@@ -128,24 +128,27 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 ## Evaluation
 
-### Model family and deployment configurations
+Throughout this section, **chinese-decision-0.8b**, **chinese-decision-2b** and their `-gguf` builds are the published weights: the trained LoRA is merged into the base model, and probabilities use the default temperature in `decision_config.json`.
 
-All runs below cover all 307,900 CJ-Bench decisions: 304,822 hard labels and 3,078 soft labels, with no filtering or truncation. ACC/ECE use hard labels only (15 equal-width bins); NLL/Brier include soft labels. Macro is the unweighted mean across four domains. T=1 rows are unmerged adapters; deployment rows use each model's existing validation-fitted temperature.
+> **About the temperature T**: probabilities are p = softmax(z / T), where z are the candidate-letter logits. **T = 1** means a plain softmax over the logits, with no temperature calibration. The released weights ship a temperature fitted on a held-out validation partition (1.108 for 0.8B, 1.075 for 2B). It only changes how sharp the probabilities are and **never changes the chosen answer**: accuracy stays the same while ECE / NLL improve. Training checkpoints in the history tables are evaluated at T = 1.
 
-| Model | Micro ACC (%) ↑ | Macro ACC (%) ↑ | ECE (%) ↓ | NLL ↓ | Brier ↓ | Score MAE ↓ |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.8B adapter / T=1 | 83.1088 | 75.7970 | 1.0656 | 0.432327 | 0.224075 | 0.578770 |
-| 2B adapter / T=1 | 84.1097 | 77.1313 | 1.4914 | 0.419089 | 0.213828 | 0.560682 |
-| 0.8B BF16 / T=1.108133 | 83.1052 | 75.7376 | 0.2706 | 0.431318 | 0.223833 | 0.584427 |
-| 0.8B Q8_0 / T=1.108133 | 83.1233 | 75.8092 | 0.2696 | 0.431293 | 0.223815 | 0.583973 |
-| 2B BF16 / T=1.074872 | 84.1107 | 77.1750 | 0.6361 | 0.416520 | 0.213295 | 0.564216 |
-| 2B Q8_0 / T=1.074872 | 84.1094 | 77.3282 | 0.6534 | 0.416288 | 0.213189 | 0.563738 |
+### Main Results
 
-**Quantization barely moves the results, but individual predictions do change.** Each Q8_0 is paired item by item with its merged BF16 model at the same temperature. For 2B, top-1 agreement is **99.00%** (304,826 / 307,900): 1,105 hard-label answers flip from correct to wrong and 1,101 from wrong to correct, a net loss of four. NLL, Brier and score MAE improve slightly; overall ECE rises slightly (0.64% → 0.65%). The 0.15-point macro gain comes mostly from the legal domain (a net 28 more correct out of 4,300) and does not mean quantization improves the model. 0.8B Q8_0 has 98.92% agreement, the same order of magnitude. Full quality was measured with llama.cpp on CUDA; CPU checks cover the API and limited inputs. Domain-level and per-item changes and CPU measurements are in the [2B GGUF card](docs/MODEL_CARD_2B_GGUF.md) and the [0.8B GGUF card](docs/MODEL_CARD_0_8B_GGUF.md).
+All 307,900 CJ-Bench decisions (304,822 hard labels, 3,078 soft labels), with no filtering or truncation. ACC / ECE use hard labels only (15 equal-width bins); NLL / Brier include soft labels. Micro is weighted by items; Macro is the unweighted mean of the four domains. **Bold** marks metrics where 2B improves on 0.8B in the same format.
+
+| Model | Format | Micro ACC (%) ↑ | Macro ACC (%) ↑ | ECE (%) ↓ | NLL ↓ | Brier ↓ | Score MAE ↓ |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| chinese-decision-0.8b | BF16 | 83.11 | 75.74 | 0.27 | 0.4313 | 0.2238 | 0.5844 |
+| chinese-decision-0.8b-gguf | Q8_0 | 83.12 | 75.81 | 0.27 | 0.4313 | 0.2238 | 0.5840 |
+| chinese-decision-2b | BF16 | **84.11** | **77.18** | 0.64 | **0.4165** | **0.2133** | **0.5642** |
+| chinese-decision-2b-gguf | Q8_0 | **84.11** | **77.33** | 0.65 | **0.4163** | **0.2132** | **0.5637** |
+
+- **2B is more accurate overall**: compared with 0.8B, Micro **+1.01**, Macro **+1.44** and the medical/legal/finance average **+1.35** points; NLL / Brier / score MAE drop by **3.4% / 4.7% / 3.5%**. Overall ECE is slightly higher (0.64% vs 0.27%) but still very low.
+- **Q8_0 is nearly lossless**: paired item by item with BF16 at the same temperature, top-1 agreement is **98.92% / 99.00%** for 0.8B / 2B, and accuracy changes by +0.02 / −0.001 points. A few individual answers still change (for 2B, 1,105 flip correct→wrong and 1,101 wrong→correct); the 0.15-point macro gain of 2B Q8_0 comes mostly from the small legal domain (4,300 items) and does not mean quantization improves the model. Full results were measured with llama.cpp on CUDA; CPU checks cover the API and limited inputs. See the [0.8B GGUF](docs/MODEL_CARD_0_8B_GGUF.md) and [2B GGUF](docs/MODEL_CARD_2B_GGUF.md) cards.
 
 ### Comparison with Chinese-Jev
 
-External rows are author-reported results from [Chinese-Jev v1 Tables 1 and 2](https://arxiv.org/html/2609.36965v1), checked on 2026-10-17, not reproductions by this project. Project rows use the validation-selected **0.8B step10000 / 2B step4994 adapters at T=1**. All values below are percentages; latency is omitted because the paper's H200/API and this project's A800 measurements are not directly comparable.
+External rows are author-reported results from [Chinese-Jev v1 Tables 1 and 2](https://arxiv.org/html/2609.36965v1) (checked on 2026-10-17, not reproduced here); project rows are the released weights. All values are percentages; **bold** marks the best value in each column.
 
 **General (Table 1)**
 
@@ -157,8 +160,8 @@ External rows are author-reported results from [Chinese-Jev v1 Tables 1 and 2](h
 | Laya Multilingual | 40.22 | 23.04 |
 | Jev (API) | 68.35 | 11.45 |
 | Chinese-Jev General / Specialists | 69.20 | 3.78 |
-| 0.8B adapter / T=1 | 72.24 | 3.03 |
-| 2B adapter / T=1 | 73.95 | 3.01 |
+| chinese-decision-0.8b | 72.26 | **1.68** |
+| chinese-decision-2b | **73.96** | 1.93 |
 
 **Specialized domains (Table 2)**
 
@@ -168,13 +171,15 @@ External rows are author-reported results from [Chinese-Jev v1 Tables 1 and 2](h
 | Open-Jev | 73.08 | 2.88 | 44.07 | 23.15 | 48.11 | 10.19 | 55.09 | 12.07 |
 | SemIF | 62.17 | 10.39 | 43.07 | 19.99 | 47.89 | 18.45 | 51.04 | 16.28 |
 | Laya Multilingual | 24.55 | 43.05 | 34.72 | 31.49 | 38.31 | 26.18 | 32.53 | 33.57 |
-| Jev (API) | 84.29 | 5.70 | 68.35 | 8.03 | 78.39 | 2.98 | 77.01 | 5.57 |
+| Jev (API) | 84.29 | 5.70 | 68.35 | 8.03 | **78.39** | 2.98 | 77.01 | 5.57 |
 | Chinese-Jev General | 39.77 | 17.33 | 38.76 | 15.37 | 35.39 | 14.43 | 37.97 | 15.71 |
 | Chinese-Jev General / Specialists | 87.65 | 7.25 | 60.10 | 17.45 | 64.72 | 11.55 | 70.82 | 12.08 |
-| 0.8B adapter / T=1 | 88.86 | 0.17 | 67.86 | 5.70 | 74.22 | 1.50 | 76.98 | 2.46 |
-| 2B adapter / T=1 | 89.50 | 0.73 | 69.05 | 3.78 | 76.03 | 1.98 | 78.19 | 2.17 |
+| chinese-decision-0.8b | 88.85 | 1.12 | 67.84 | 4.05 | 74.00 | 2.45 | 76.90 | 2.54 |
+| chinese-decision-2b | **89.50** | **0.24** | **68.74** | **3.37** | 76.50 | **2.13** | **78.25** | **1.92** |
 
-Chinese-Jev General plus three Specialists are four separate models; each Chinese Decision size covers all four domains with one model. Jev is a closed-source API. The professional average weights medical, legal and finance equally. Compared with 0.8B, the 2B adapter improves micro accuracy by 1.0009 points, four-domain macro by 1.3344 and professional accuracy by 1.2110; overall ECE is higher before calibration. Model size, batch and RLCD changed together, so this is not an isolated RLCD gain. Finance remains below the paper's Jev result. [Source](https://arxiv.org/html/2609.36965v1)
+- Compared with Chinese-Jev (General + three Specialists), chinese-decision-2b is **4.76 / 1.85 / 8.64 / 11.78** points higher on general / medical / legal / finance, and **7.43** higher on the specialized average. It is **1.24** points above the closed-source Jev on the specialized average, while finance is still 1.89 points lower.
+- Both sizes have lower ECE than every model in the paper, in all four domains.
+- Chinese-Jev General plus three Specialists are four separately trained models; this project covers all four domains with one model per size. Jev is a closed API. The paper uses H200 / API and this project uses an A800, so latency is not ranked. Model size, batch and objective (2B adds RLCD) all change between 0.8B and 2B, so differences are not attributable to one factor.
 
 **Method differences from Chinese-Jev**
 
@@ -187,7 +192,7 @@ Chinese-Jev General plus three Specialists are four separate models; each Chines
 
 ### 0.8B Training History
 
-The four best checkpoints selected in turn by validation distribution NLL during the same run, each evaluated on the full CJ-Bench test set under the same protocol (uncalibrated, all 307,900 decisions). The last two rows are quoted from the Chinese-Jev paper for reference.
+The four best checkpoints selected in turn by validation distribution NLL during the same run, each evaluated on all 307,900 CJ-Bench decisions under the same protocol (before merging, T = 1). The third-to-last row is the released model; the last two rows are quoted from the Chinese-Jev paper for reference.
 
 | Checkpoint | Progress | Val. NLL ↓ | General ACC ↑ | Medical ACC ↑ | Legal ACC ↑ | Finance ACC ↑ | Specialized avg. ACC ↑ | Specialized avg. ECE ↓ | Overall ECE ↓ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -195,19 +200,20 @@ The four best checkpoints selected in turn by validation distribution NLL during
 | step 3000 | 29.71% | 0.691 | 70.26 | 87.22 | 58.93 | 68.67 | 71.61 | 1.75 | 1.25 |
 | step 5000 | 49.41% | 0.676 | 70.90 | 87.89 | 63.37 | 71.17 | 74.14 | 1.49 | 0.84 |
 | **step 10000 (final)** | 98.71% | 0.600 | 72.24 | 88.86 | 67.86 | 74.22 | 76.98 | 2.46 | 1.07 |
+| *chinese-decision-0.8b (released)* | — | — | 72.26 | 88.85 | 67.84 | 74.00 | 76.90 | 2.54 | 0.27 |
 | *Reference: Chinese-Jev (G / S)* | — | — | 69.20 | 87.65 | 60.10 | 64.72 | 70.82 | 12.08 | — |
 | *Reference: Jev* | — | — | 68.35 | 84.29 | 68.35 | 78.39 | 77.01 | 5.57 | — |
 
 > Progress uses actual trained decisions: steps 2000 / 3000 / 5000 / 10000 saw 2,586,624 / 3,876,160 / 6,447,104 / 12,879,232 decisions, or 19.82% / 29.71% / 49.41% / 98.71% of one epoch. For the separate 2B trajectory see [the release record](docs/TRAINING_2B.md).
 
-- **Steady gains in every domain**: from step 2000 to step 10000, legal improves by 13.79 points, finance by 10.06, general by 3.20, and medical by 2.08.
-- **Ahead of Chinese-Jev-S from step 3000 on**: specialized-domain average accuracy rises from 68.34% to 76.98%, and the gap to Jev (77.01%) narrows from 8.67 to 0.03 points.
-- **Calibration does not improve monotonically**: without temperature calibration, overall ECE falls from 1.63% to 0.84% at step 5000 and ends at 1.07%; specialized-domain average ECE is lowest at step 5000 (1.49%) and ends at 2.46%, mostly because legal ECE rises from 2.30% to 5.70%.
+- **Steady gains in every domain**: from step 2000 to step 10000, legal improves by **13.79** points, finance by **10.06**, general by **3.20**, and medical by **2.08**.
+- **Ahead of Chinese-Jev-S from step 3000 on**: specialized-domain average accuracy rises from 68.34% to **76.98%**, and the gap to Jev (77.01%) narrows from 8.67 to **0.03** points.
+- **Calibration does not improve monotonically**: without temperature calibration, overall ECE falls from 1.63% to 0.84% at step 5000 and ends at 1.07%; specialized-domain average ECE is lowest at step 5000 (1.49%) and ends at 2.46%, mostly because legal ECE rises from 2.30% to 5.70%. After temperature calibration the released model's overall ECE is **0.27%**.
 - Validation NLL keeps falling (0.739 → 0.600), in the same direction as the test-set accuracy gains.
 
 ### 2B Training History
 
-The best 2B (CE + RLCD) checkpoint selected by validation distribution NLL every 1,000 steps, each evaluated on all 307,900 CJ-Bench decisions under the same protocol (unmerged adapter, T = 1, no filtering or truncation). The last row is the merged, calibrated release.
+The best 2B (CE + RLCD) checkpoint selected by validation distribution NLL every 1,000 steps, each evaluated on all 307,900 CJ-Bench decisions under the same protocol (before merging, T = 1, no filtering or truncation). The last row is the released model.
 
 | Checkpoint | Progress | Val. NLL ↓ | General ACC ↑ | Medical ACC ↑ | Legal ACC ↑ | Finance ACC ↑ | Specialized avg. ACC ↑ | Specialized avg. ECE ↓ | Overall ECE ↓ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -216,89 +222,87 @@ The best 2B (CE + RLCD) checkpoint selected by validation distribution NLL every
 | step 3000 | 60.11% | 0.603 | 71.87 | 88.99 | 65.56 | 74.31 | 76.28 | 1.63 | 1.63 |
 | step 4000 | 80.18% | 0.592 | 73.77 | 89.42 | 68.40 | 76.03 | 77.95 | 1.74 | 0.85 |
 | **step 4994 (final)** | 100.00% | 0.586 | 73.95 | 89.50 | 69.05 | 76.03 | 78.19 | 2.17 | 1.49 |
-| *Release (merged, T = 1.075)* | — | — | 73.96 | 89.50 | 68.74 | 76.50 | 78.25 | 1.92 | 0.64 |
+| *chinese-decision-2b (released)* | — | — | 73.96 | 89.50 | 68.74 | 76.50 | 78.25 | 1.92 | 0.64 |
 
 > Progress uses actual trained decisions: steps 1000 / 2000 / 3000 / 4000 / 4994 saw 2,619,904 / 5,236,736 / 7,842,752 / 10,461,952 / 13,048,000 decisions. Step numbers are not comparable with 0.8B (global batch ≈ 2048 vs 1024); compare by data progress.
 
-- **Legal and finance gain the most**: from step 1000 to the final checkpoint, legal improves by 13.37 points, finance by 9.08, general by 3.39, and medical by 1.81.
-- **Ahead of Chinese-Jev (G / S) from step 2000 on**; the specialized average passes the closed-source Jev (77.01%) from step 4000 and ends 1.18 points ahead, although finance alone is still below Jev.
+- **Legal and finance gain the most**: from step 1000 to the final checkpoint, legal improves by **13.37** points, finance by **9.08**, general by **3.39**, and medical by **1.81**.
+- **Ahead of Chinese-Jev (G / S) from step 2000 on**; the specialized average passes the closed-source Jev (77.01%) from step 4000 and ends **1.18** points ahead, although finance alone is still below Jev.
 - **General drops 0.69 points at step 3000**: mostly because the product-catalog source (3,151 items) collapses from 75.06% to 30.05%; it recovers by step 4000. See the [2B record](docs/TRAINING_2B.md) (Chinese).
-- **Plateau late in training**: from step 4000 to 4994 overall accuracy rises only 0.12 points, and uncalibrated overall ECE rises from 0.85% to 1.49%; the temperature-calibrated release is at 0.64%.
-- At about 20% of the data, 2B step 1000 is 1.13 points more accurate overall than 0.8B step 2000. Model size, batch and RLCD all changed, so this is not attributable to one factor.
+- **Plateau late in training**: from step 4000 to 4994 overall accuracy rises only 0.12 points, and uncalibrated overall ECE rises from 0.85% to 1.49%; the temperature-calibrated release is at **0.64%**.
+- At about 20% of the data, 2B step 1000 is **1.13** points more accurate overall than 0.8B step 2000. Model size, batch and RLCD all changed, so this is not attributable to one factor.
 
 ### Results by Domain and Type
 
 <details>
-<summary><b>0.8B (step 10000): CJ-Bench by domain and by type</b></summary>
+<summary><b>chinese-decision-0.8b: CJ-Bench by domain and by type</b></summary>
 
-> Step 10000, uncalibrated (T = 1), single A800 80GB, BF16. ACC and ECE use hard-label items only; NLL and Brier cover every item, including soft labels.
+> Released weights (T = 1.108), one A800 80GB, BF16. ACC and ECE use hard labels only; NLL and Brier cover every item, including soft labels. Medical is 65% of the test set, so micro metrics mostly reflect medical; prefer macro for cross-domain comparisons.
 
 **By domain**
 
 | Domain | Items | ACC ↑ | ECE ↓ | NLL ↓ | Brier ↓ |
 |---|---:|---:|---:|---:|---:|
-| General | 100,000 | 72.24 | 3.03 | 0.693 | 0.356 |
-| Medical | 200,000 | 88.86 | 0.17 | 0.293 | 0.152 |
-| Legal | 4,300 | 67.86 | 5.70 | 0.728 | 0.414 |
-| Finance | 3,600 | 74.22 | 1.50 | 0.593 | 0.336 |
-| **Overall (micro)** | **307,900** | **83.11** | **1.07** | **0.432** | **0.224** |
-| **Four-domain average (macro)** | — | **75.80** | — | **0.577** | — |
-
-> Medical makes up 65% of the test set, so the micro average mostly reflects the medical domain. Use the macro average when comparing across domains.
+| General | 100,000 | 72.26 | 1.68 | 0.686 | 0.355 |
+| Medical | 200,000 | 88.85 | 1.12 | 0.295 | 0.152 |
+| Legal | 4,300 | 67.84 | 4.05 | 0.721 | 0.410 |
+| Finance | 3,600 | 74.00 | 2.45 | 0.597 | 0.337 |
+| **Overall (micro)** | **307,900** | **83.11** | **0.27** | **0.431** | **0.224** |
+| **Unweighted mean of four domains (macro)** | — | **75.74** | — | **0.575** | — |
 
 **By question type**
 
 | Type | Items | ACC ↑ | ECE ↓ | NLL ↓ | Expected-level MAE ↓ |
 |---|---:|---:|---:|---:|---:|
-| `noul` | 134,577 | 94.95 | 0.39 | 0.117 | — |
-| `choice` | 134,577 | 78.33 | 1.48 | 0.588 | — |
-| `score` | 38,746 | 56.47 | 2.35 | 0.987 | 0.579 |
+| `noul` | 134,577 | 94.96 | 0.19 | 0.117 | — |
+| `choice` | 134,577 | 78.32 | 0.58 | 0.587 | — |
+| `score` | 38,746 | 56.45 | 1.67 | 0.984 | 0.584 |
 
 **Accuracy by domain × type (%)**
 
 | Domain | `noul` | `choice` | `score` |
 |---|---:|---:|---:|
-| General | 87.57 | 72.88 | 54.66 |
-| Medical | 97.81 | 80.57 | 66.53 |
-| Legal | 85.80 | 64.13 | 51.46 |
-| Finance | 76.50 | 63.08 | 83.08 |
+| General | 87.59 | 72.93 | 54.64 |
+| Medical | 97.82 | 80.55 | 66.50 |
+| Legal | 85.60 | 64.07 | 51.69 |
+| Finance | 76.33 | 62.83 | 82.83 |
 
 </details>
 
 <details>
-<summary><b>2B (step 4994): CJ-Bench results by domain and question type</b></summary>
+<summary><b>chinese-decision-2b: CJ-Bench by domain and by type</b></summary>
 
-> Step 4994, unmerged adapter, uncalibrated (T = 1), one A800 80GB, BF16; same protocol as the 0.8B breakdown above. Domain and type results for the merged release and Q8_0 are in the [2B card](docs/MODEL_CARD_2B.md) and the [2B GGUF card](docs/MODEL_CARD_2B_GGUF.md).
+> Released weights (T = 1.075), same protocol. **Bold** marks accuracies that improve on chinese-decision-0.8b. Domain and type results for Q8_0 are in the [2B GGUF card](docs/MODEL_CARD_2B_GGUF.md).
 
 **By domain**
 
 | Domain | Items | ACC ↑ | ECE ↓ | NLL ↓ | Brier ↓ |
 |---|---:|---:|---:|---:|---:|
-| General | 100,000 | 73.95 | 3.01 | 0.669 | 0.337 |
-| Medical | 200,000 | 89.50 | 0.73 | 0.285 | 0.146 |
-| Legal | 4,300 | 69.05 | 3.78 | 0.705 | 0.407 |
-| Finance | 3,600 | 76.03 | 1.98 | 0.579 | 0.324 |
-| **Overall (micro)** | **307,900** | **84.11** | **1.49** | **0.419** | **0.214** |
-| **Unweighted mean of four domains (macro)** | — | **77.13** | — | **0.560** | — |
+| General | 100,000 | **73.96** | 1.93 | 0.663 | 0.336 |
+| Medical | 200,000 | **89.50** | 0.24 | 0.284 | 0.146 |
+| Legal | 4,300 | **68.74** | 3.37 | 0.703 | 0.406 |
+| Finance | 3,600 | **76.50** | 2.13 | 0.578 | 0.323 |
+| **Overall (micro)** | **307,900** | **84.11** | **0.64** | **0.417** | **0.213** |
+| **Unweighted mean of four domains (macro)** | — | **77.18** | — | **0.557** | — |
 
 **By question type**
 
 | Type | Items | ACC ↑ | ECE ↓ | NLL ↓ | Expected-level MAE ↓ |
 |---|---:|---:|---:|---:|---:|
-| `noul` | 134,577 | 95.09 | 0.62 | 0.115 | — |
-| `choice` | 134,577 | 80.14 | 2.15 | 0.564 | — |
-| `score` | 38,746 | 57.64 | 2.62 | 0.972 | 0.561 |
+| `noul` | 134,577 | **95.11** | 0.34 | 0.115 | — |
+| `choice` | 134,577 | **80.12** | 0.90 | 0.559 | — |
+| `score` | 38,746 | **57.67** | 1.65 | 0.969 | 0.564 |
 
 **Accuracy by domain × type (%)**
 
 | Domain | `noul` | `choice` | `score` |
 |---|---:|---:|---:|
-| General | 87.94 | 76.22 | 56.03 |
-| Medical | 97.87 | 81.83 | 66.22 |
-| Legal | 82.53 | 67.40 | 55.38 |
-| Finance | 81.42 | 66.83 | 79.83 |
+| General | **88.01** | **76.16** | **56.05** |
+| Medical | **97.87** | **81.81** | 66.19 |
+| Legal | 82.07 | **67.20** | **55.15** |
+| Finance | **81.75** | **67.42** | 80.33 |
 
-> Compared with 0.8B, 9 of the 12 domain × type cells improve; legal yes/no (`noul`, 82.53 vs 85.80) and finance rating (`score`, 79.83 vs 83.08) drop clearly, and medical rating dips slightly (66.22 vs 66.53). See [Limitations](#limitations).
+> 9 of the 12 domain × type cells improve; legal yes/no (`noul`, 82.07 vs 85.60) and finance rating (`score`, 80.33 vs 82.83) drop clearly, and medical rating dips slightly (66.19 vs 66.50). See [Limitations](#limitations).
 
 </details>
 
@@ -319,13 +323,16 @@ On a stratified subset of the official validation set (4 domains × 3 types, 100
 
 ### Inference Efficiency
 
-| Metric | 0.8B adapter | 2B adapter | 2B merged release |
-|---|---:|---:|---:|
-| Single-request latency (batch = 1, median of 60 warmed requests) | 70.1 ms | 69.0 ms | 44.7 ms |
-| Batched throughput (full benchmark) | 132 decisions/s | 82.5 decisions/s | 145.9 decisions/s |
-| Peak GPU memory (batched evaluation) | 6.7 GB | 10.6 GB | 9.3 GB |
+The same 25 CJ-Bench inputs (92–6,521 tokens), single requests on the released weights, three warmed runs each:
 
-> One A800 80GB PCIe in BF16; mean CJ-Bench input length is 223 tokens. Latency covers local input encoding, the forward pass, and probability output; it excludes HTTP and network time. The server is shared and each run used a different physical GPU; the merged release skips the extra LoRA branch computation. Differences between columns are not a controlled speed experiment. For Q8_0 latency on GPU and CPU see the [2B GGUF card](docs/MODEL_CARD_2B_GGUF.md) and the [0.8B GGUF card](docs/MODEL_CARD_0_8B_GGUF.md).
+| Metric (single-request p50) | chinese-decision-0.8b | chinese-decision-2b |
+|---|---:|---:|
+| GPU · BF16 (Transformers) | 44.4 ms | 44.8 ms |
+| GPU · Q8_0 (llama.cpp) | **17.9 ms** | **23.6 ms** |
+| CPU, 16 threads · Q8_0 (llama.cpp) | 427.0 ms | 818.0 ms |
+| CPU process memory · Q8_0 / FP32 | **2.19** / 7.44 GiB | **3.34** / 11.74 GiB |
+
+> Shared server with an A800 80GB PCIe and a Xeon Gold 5318Y. Timing covers the forward pass and probabilities for pre-tokenized input; it excludes tokenization, HTTP and network. At batch = 1 both sizes are bound by GPU scheduling overhead, so BF16 latency is similar; Q8_0 is faster for short inputs on GPU, and its main CPU advantage is memory. Long inputs and the Windows desktop measurements are in the [0.8B GGUF](docs/MODEL_CARD_0_8B_GGUF.md) and [2B GGUF](docs/MODEL_CARD_2B_GGUF.md) cards.
 
 ## Quick Start
 
@@ -642,8 +649,8 @@ python -m unittest discover -s tests
 
 ## Limitations
 
-- **Keep result configurations separate**: T=1 adapters, merged releases and Q8_0 all have full results, but merge rounding, temperature and quantization effects stack. Compare like with like rather than attributing a difference to one factor. Q8_0 full results were measured on GPU (llama.cpp CUDA); the CPU backend was checked on limited inputs only. Calibration validation is not test accuracy, and a low overall ECE does not mean every source is well calibrated.
-- **Uneven improvements**: 2B improves aggregate accuracy but its T=1 legal yes/no and finance rating accuracies are 82.53% / 79.83%, below 0.8B at 85.80% / 83.08%. Finance still trails Jev; product-catalog performance fluctuates during training. Full diagnostics are in the [2B record](docs/TRAINING_2B.md).
+- **Keep result configurations separate**: the released weights (merged, default temperature), training checkpoints (T = 1) and Q8_0 differ slightly. Compare like with like rather than attributing a difference to one factor. Q8_0 full results were measured on GPU (llama.cpp CUDA); the CPU backend was checked on limited inputs only. Calibration validation is not test accuracy, and a low overall ECE does not mean every source is well calibrated.
+- **Uneven improvements**: 2B improves aggregate accuracy but its legal yes/no and finance rating accuracies are 82.07% / 80.33%, below 0.8B at 85.60% / 82.83%. Finance still trails Jev; product-catalog performance fluctuates during training. Full diagnostics are in the [2B record](docs/TRAINING_2B.md).
 - **Slower than encoder models**: the 0.8B / 2B decoders have higher single-request latency than the roughly 322M Chinese-Jev encoder.
 - **`confidence` is not accuracy**: it only measures how sharp the distribution is. Before acting automatically on a threshold, check calibration on your own data.
 - **Label semantics follow the upstream tasks**: for example, medical matching labels describe the original matching task and do not imply medical correctness. Do not use model outputs as the sole basis for medical, legal, or financial decisions.
