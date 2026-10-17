@@ -1,0 +1,19 @@
+\begin{table*}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Scoped performance measurements. GPU peak allocation is in decimal GB; CPU process memory is in GiB. These workloads are not hardware-equivalent to imported baselines.}
+\label{tab:efficiency}
+\begin{tabular}{llll}
+\toprule
+Configuration & Workload / scope & Warm p50 & Peak memory \\
+\midrule
+0.8B / A800 / BF16 & 60 decisions; local end-to-end & 70.10 ms & 6.7 GB (batched) \\
+2B / A800 / BF16 & 60 decisions; local end-to-end & 70.09 ms & 10.64 GB (batched) \\
+0.8B / CPU / FP32 & 36 short-prompt forwards & 627 ms & 3.47 GiB \\
+0.8B / CPU / BF16 GGUF & 36 short-prompt forwards & 640 ms & 2.04 GiB \\
+0.8B / CPU / Q8\_0 & 36 short-prompt forwards & 524 ms & 1.38 GiB \\
+\bottomrule
+\end{tabular}
+\par\vspace{3pt}\begin{minipage}{\textwidth}\footnotesize CPU: Intel Core i7-9700, eight threads, 2,048-token capacity; no tokenization or HTTP. GPU: A800 80GB PCIe; includes input preparation, excludes HTTP/network. GPU memory is measured in separate full-benchmark batched runs.\end{minipage}
+\end{table*}

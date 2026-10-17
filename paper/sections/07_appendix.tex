@@ -1,0 +1,93 @@
+\section{Prompt and Interface Details}
+\label{app:prompt}
+The user-message body below is an English translation for readability. The actual compiler uses Chinese labels and applies the Qwen chat template with \texttt{enable\_thinking=False} and an assistant generation prefix. It does not append a target answer to the model input.
+\begin{lstlisting}
+Context to judge:
+{state}
+
+Question:
+{instructions}
+
+Candidates:
+A: {key_1} -- {description_1}
+B: {key_2} -- {description_2}
+...
+Return only the corresponding candidate letter.
+\end{lstlisting}
+Structured contexts or descriptions are serialized as compact JSON with Unicode preserved. \choice{} candidate insertion order defines its inference-time mapping; training-time permutation updates both the rendered options and target vector. \score{} levels are indexed from zero, while its internal letter indices start with A as for other types.
+
+An illustrative English-language request is shown below. It documents the schema, not a new measured model prediction.
+\begin{lstlisting}
+{
+  "state": "The customer has requested an invoice three times.",
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": "Which team should handle this?",
+      "criteria": {
+        "billing": "Payments, invoices, refunds",
+        "technical": "Faults and system issues",
+        "sales": "Purchase and upgrade inquiries"
+      }
+    }
+  }
+}
+\end{lstlisting}
+For a categorical question, the response returns the probability map, the winning key, and the sharpness statistic. \noul{} adds the true probability; \score{} adds the expected level index and a legend. Reported output-token usage is zero because the service does not generate or decode an answer token.
+
+\section{Additional Benchmark Breakdown}
+\label{app:breakdown}
+\suppressfloats[t]
+\input{tables/domain_detail}
+\input{tables/domain_type}
+Tables~\ref{tab:domain-detail} and \ref{tab:domain-type} report the completed 0.8B model at $T=1$. All 3,078 soft benchmark targets occur in general-domain \score{} decisions; they contribute to distribution NLL, Brier, and expected-score MAE, but not accuracy or ECE. Exact per-group counts are included in the accompanying machine-readable evidence.
+
+The benchmark contains 56,064 parent units in general, 76,270 in medicine, 2,048 in law, and 3,274 in finance according to the stored evaluation audit. These parent counts are smaller than decision counts and motivate grouped rather than naive decision-level uncertainty estimates in future analysis.
+
+\section{Reproduction Details}
+\label{app:reproduce}
+Both training runs use random seed 42, LoRA rank 32, scaling 64, and dropout 0.05. The target projection names are:
+\begin{lstlisting}
+q_proj, k_proj, v_proj, o_proj,
+in_proj_qkv, in_proj_z, in_proj_a, in_proj_b,
+out_proj, gate_proj, up_proj, down_proj
+\end{lstlisting}
+The training implementation uses AdamW defaults except for the recorded learning rate, BF16 parameters/computation as configured by the backbone, and non-reentrant gradient checkpointing. The seed and data order are recorded, but they do not guarantee bitwise reproducibility across GPU counts, libraries, and kernels.
+
+The nominal 0.8B command sequence is:
+\begin{lstlisting}
+python scripts/prepare_data.py 
+  --data datasets/CJ-Dataset
+  --out datasets/CJ-mixed
+
+torchrun --standalone --nproc_per_node=4
+  scripts/train.py --out runs/cj-ddp
+
+python scripts/finalize.py
+  --run runs/cj-ddp
+  --out models/chinese-decision-0.8b
+\end{lstlisting}
+Line breaks above are typographical; each command is executed as a single shell command. The 2B run changes the backbone, output directory, minimum batch, token budget, and objective:
+\begin{lstlisting}
+--base models/Qwen3.5-2B
+--out runs/cj-2b-rlcd-bs2048
+--global-batch-size 2048
+--token-budget 524288
+--rlcd
+\end{lstlisting}
+All other shared defaults are as in Table~\ref{tab:training}. Changing the maximum-step limit would also change the learning-rate and noise schedules, so a short run with a compressed schedule is not a matched early checkpoint of the one-epoch run.
+
+For benchmarking, the evaluator snapshots the validation-selected adapter and records dataset checksums, adapter SHA256, compiler version, metric-code SHA256, temperature, candidate-order policy, coverage, and runtime configuration. It never fits temperature on CJ-Bench. The released data revision used in these runs is
+\begin{lstlisting}
+a3963a61f71e00051a80721e587d720d8926e8e7
+\end{lstlisting}
+The main uncalibrated 0.8B and 2B runs use a maximum evaluation batch of 256 decisions and a 65,536 padded-token budget. Deployment evaluation is a separate run with its own batch and backend settings, so its throughput should not be read as a pure temperature or quantization effect.
+
+The single-input forward helper avoids padding for a lone sequence because the backbone's linear-attention padding behavior differs between singleton and multirow inputs. Multirow inputs use left padding to a multiple of 64 with attention masks. This detail is relevant when comparing numerical results across serving backends and batch configurations.
+
+\balance
+\section{Artifact and Extensions}
+\label{app:artifact}
+The Overleaf project contains ordinary LaTeX source, a BibTeX bibliography, vector PDF figures, generated table fragments, and a compact evidence snapshot. It requires no shell escape, custom class, external fonts, or Python execution on Overleaf. The optional local artifact-generation script rebuilds figures and tables from the included evidence; its outputs are already packaged.
+
+Future family members should use the same full benchmark, report consumed decisions and training objective, and distinguish raw from temperature-scaled results. A controlled scale comparison should hold data exposure, objective, adapter settings, selection protocol, and evaluation implementation fixed, while reporting compute and memory. A controlled RLCD study should compare objectives within the same backbone and training budget. Larger model sizes beyond 2B are not evaluated here.

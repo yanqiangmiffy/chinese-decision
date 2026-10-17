@@ -1,0 +1,18 @@
+\begin{table*}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Checkpoint trajectory for the 0.8B cross-entropy run. All test results are full-benchmark, uncalibrated measurements.}
+\label{tab:trajectory}
+\begin{tabular}{rrrrrrrrr}
+\toprule
+Step & Val. NLL & General ACC & Medical ACC & Legal ACC & Finance ACC & Prof. ACC & Prof. ECE & Micro ECE \\
+\midrule
+2,000 & 0.739 & 69.04 & 86.78 & 54.07 & 64.17 & 68.34 & 2.73 & 1.63 \\
+3,000 & 0.691 & 70.26 & 87.22 & 58.93 & 68.67 & 71.61 & 1.75 & 1.25 \\
+5,000 & 0.676 & 70.90 & 87.89 & 63.37 & 71.17 & 74.14 & 1.49 & 0.84 \\
+10,000 & 0.600 & 72.24 & 88.86 & 67.86 & 74.22 & 76.98 & 2.46 & 1.07 \\
+\bottomrule
+\end{tabular}
+\par\vspace{3pt}\begin{minipage}{\textwidth}\footnotesize Accuracy and ECE are percentages. Checkpoints are selected using validation distribution NLL, not these test metrics.\end{minipage}
+\end{table*}

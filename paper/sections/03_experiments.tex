@@ -1,0 +1,40 @@
+\section{Experimental Setup}
+\label{sec:setup}
+\subsection{Data and Mixing}
+We use the released CJ training and benchmark splits rather than constructing a new corpus. The training split contains 13,048,000 decisions: 10,000,000 general, 3,000,000 medical, and 24,000 each in law and finance. Table~\ref{tab:data} reports split sizes and hard-label counts used in evaluation. Counts refer to decisions, not unique source documents or independent real-world events.
+
+\input{tables/data}
+
+Training data are sharded by domain, source, and question type. A streaming mixer samples shards in proportion to their remaining counts and visits each decision once per epoch. This interleaves tasks while retaining corpus proportions; it does \emph{not} equalize domain frequencies or oversample the smaller domains. Length bucketing and padded-token budgets reduce padding overhead. Validation files are not mixed into training.
+
+A separate full-file candidate-count audit checks release checksums and finds 2--16 candidates in the training, validation, and test splits, with no decision exceeding 26 candidates. Thus the 26-letter interface does not exclude released benchmark decisions. This audit verifies format and coverage, not freedom from pretraining contamination.
+
+\subsection{Training Configurations}
+\input{tables/training}
+Table~\ref{tab:training} gives the run configurations. The 0.8B run completes one epoch in 10,132 optimizer updates; its minimum validation NLL occurs at step 10,000. Training uses BF16, gradient checkpointing, AdamW, peak learning rate $10^{-4}$, gradient norm clipping at 1.0, 100-step warmup, and cosine decay toward 10\% of peak. The effective schedule multiplies the warmup factor by the cosine factor.
+
+The nominal global batch is a minimum decision count accumulated before an update, rather than a fixed exact size. Token-limited microbatches can overshoot this threshold; gradients are normalized by the actual decision count. Optimizer steps therefore do not provide matched data exposure across sizes. The 2B step-1000 and step-2000 snapshots have consumed 2,619,904 and 5,236,736 decisions (20.08\% and 40.13\% of one epoch). They are validation-selected snapshots available during an ongoing one-epoch run.
+
+The completed 0.8B run uses four GPUs in its final configuration, following an earlier change in distributed world size recorded by the project. We lack consolidated energy or GPU-hour accounting and make no training-cost-efficiency claim.
+
+\subsection{Metrics and Evaluation Protocol}
+Every full run covers all 307,900 CJ-Bench decisions, including 304,822 hard targets and 3,078 soft targets. Candidate order is preserved during testing. Inputs are neither filtered nor truncated; the longest compiled prompt is 6,850 tokens and the mean length is 222.53 tokens.
+
+Accuracy uses argmax predictions on hard targets only. ECE uses the same hard subset and 15 equal-width confidence bins:
+\begin{equation}
+\mathrm{ECE}=\sum_{b=1}^{15}\frac{|B_b|}{N_h}
+\left|\mathrm{acc}(B_b)-\mathrm{conf}(B_b)\right|,\label{eq:ece}
+\end{equation}
+where confidence is the maximum candidate probability. Distribution NLL and the unnormalized multiclass Brier score use all targets:
+\begin{align}
+\mathrm{NLL}&=-\frac{1}{N}\sum_{n,i}y_{ni}\log p_{ni},\\
+\mathrm{Brier}&=\frac{1}{N}\sum_{n,i}(p_{ni}-y_{ni})^2.
+\end{align}
+For \score{}, expected-score MAE compares expected level indices under the predicted and target distributions. Ordinal accuracy still uses discrete argmax and is a different metric.
+
+We report micro accuracy over all hard targets, four-domain macro accuracy, and the unweighted average across three professional domains. Medicine accounts for 64.96\% of all decisions and 65.61\% of hard targets, so micro and macro performance answer different questions. Training-time validation summaries use 10 ECE bins; they are not directly interchangeable with 15-bin benchmark ECE. Model selection always uses distribution NLL.
+
+\subsection{Baselines and Evidence Provenance}
+Baseline accuracies and ECE values are imported from Tables 1 and 2 of Chinese-Jev~\citep{wang2026chinesejev}; we do not rerun those models. Chinese-Jev-G denotes its general checkpoint and Chinese-Jev-S denotes three domain specialists. Jev is a hosted model. The imported Qwen3.5-2B baseline is not our decision-fine-tuned 2B model.
+
+Local tables are generated from stored evaluation JSON files, with source paths and SHA256 hashes recorded in the accompanying artifact. The manuscript uses an October 16, 2026 evidence snapshot. We have not repeated GPU training or inference during manuscript preparation. Imported baseline latency is omitted from the accuracy tables because hardware and, for Jev, network scope differ from our measurements.

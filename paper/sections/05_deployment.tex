@@ -1,0 +1,25 @@
+\section{Deployment and Quantization}
+\label{sec:deployment}
+\subsection{Serving Interface}
+The serving implementation accepts context and a collection of named questions, validates their candidate schemas, and returns probabilities, derived decisions, and the sharpness statistic in Eq.~\eqref{eq:confidence}. A request supports up to 64 questions, each compiled separately. The GPU server supports dynamic batching; the local GGUF backend serializes access to its mutable inference context. Thus one HTTP request can contain multiple decisions without implying joint reasoning or a shared model pass over all of them.
+
+The Transformers and llama.cpp~\citep{llamacpp} backends use the same candidate-only normalization. The GGUF implementation checks tokenization consistency, resets the sequence between decisions, and preserves the input-length and question-type rules. We evaluate Q8\_0 quantization of the merged 0.8B release; this is not a separate decision-training run.
+
+\subsection{Full-Benchmark Deployment Results}
+\input{tables/deployment}
+Unlike the raw adapter results above, the deployment comparison in Table~\ref{tab:deployment} uses the held-out fitted temperature $T=1.108133$. Both the merged Transformers reference and its Q8\_0 counterpart are evaluated on all 307,900 decisions. Their overall ECE values are 0.2706\% and 0.2696\%, respectively, with accuracy 83.1052\% and 83.1233\%. The temperature is carried over to Q8 without refitting.
+
+The quantized model preserves aggregate performance closely in this measured configuration, but predictions are not identical. Top-1 agreement is 98.9227\% over all decisions and 96.7222\% on \score{} questions. The largest absolute candidate-probability difference is 0.2269, while the median per-decision maximum difference is 0.00168 and its 95th percentile is 0.02357. Among hard targets, 1,185 reference-correct predictions become wrong and 1,240 reference-wrong predictions become correct. Small aggregate changes can therefore conceal consequential changes near application thresholds.
+
+The calibrated merged reference and the uncalibrated adapter are different evaluated artifacts with small numerical differences. Their ECE comparison is informative, but it is not a controlled temperature-only ablation. For exactly fixed logits, a positive scalar temperature cannot change the argmax; the small observed accuracy difference between those artifacts reflects other numerical/configuration differences.
+
+\subsection{Measured Inference Cost}
+\input{tables/efficiency}
+The raw 0.8B checkpoint has a warm batch-one median latency of 70.10\,ms on one NVIDIA A800 80GB PCIe, measured over 60 stratified benchmark decisions. This includes local input preparation, forward computation, and probability output, and excludes HTTP and network delay. Its full-benchmark batched throughput is approximately 132 decisions/s with 6.7\,GB peak GPU allocation under that run's evaluation configuration. The 2B step-2000 snapshot has a measured batch-one median of 70.09\,ms and batched throughput of 82.40 decisions/s, with 10.64\,GB peak allocation. Similar latency medians from this small workload do not establish equal latency distributions across model sizes.
+
+Table~\ref{tab:efficiency} also reports a separate Windows CPU diagnostic study. On an Intel Core i7-9700 with eight inference threads and a 2,048-token runtime capacity, Q8\_0 has a 524\,ms short-prompt median and 1.38\,GiB peak process working set, compared with 627\,ms and 3.47\,GiB for Transformers FP32. The latency statistic aggregates 36 warm measurements over 12 prompts of 64--89 tokens. It excludes tokenization and HTTP. On a separate 852-token case, Q8 takes 6.65\,s versus 5.12\,s for FP32. The evidence supports local deployment feasibility, not a universal quantization speedup or a mobile-device result.
+
+\subsection{Application Workbench}
+Decision Studio provides a workbench for ticket triage, input/output guardrails, live-message moderation, and agent routing. These examples combine model probabilities with explicit application rules. A ticket application can ask independently about category, urgency, and refund intent; a routing application can require higher confidence for consequential actions. Such thresholds are application policies rather than learned guarantees.
+
+The workbench is an integration artifact, not an additional labeled benchmark. Its screenshots and example timings are not included in quantitative accuracy claims. One documented qualitative failure is that spoiler detection can react to the word ``spoiler'' in a request asking others not to reveal spoilers. Controlled robustness, prompt-injection, and out-of-distribution evaluations remain open.

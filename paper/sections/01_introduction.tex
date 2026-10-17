@@ -1,0 +1,31 @@
+\section{Introduction}
+\label{sec:intro}
+A customer-support system may need to select a department, a moderation service to decide whether to escalate a message, and an agent to choose an available tool. In each case, the output space is bounded, even though the input and the decision instructions are expressed in natural language. A generative interface can encode these tasks, but applications must then recover a decision from generated text. When downstream logic depends on uncertainty, a label alone is also insufficient: the application needs probabilities over the alternatives.
+
+\model{} exposes this bounded decision problem directly. It accepts a context, a question, and candidate descriptions, and returns a normalized probability distribution. The same distribution supports a Boolean judgment, a categorical selection, or the expected value of an ordered rating. The model processes each question once and reads existing vocabulary logits at the final input position. No answer token is sampled, no free-form answer is parsed, and no chain of thought is generated. Here, \emph{single-pass} refers to one forward evaluation per compiled question; it does not imply constant work independent of input length or that all questions in an API request share one forward evaluation.
+
+The project builds on the option-letter decision workflow in \texttt{hmm}~\citep{hmm2026}, Qwen3.5 language backbones~\citep{qwen08,qwen2b}, and the CJ-Dataset and CJ-Bench resources~\citep{wang2026chinesejev}. Our focus is adaptation, joint-domain training, empirical characterization, and deployment of a reusable Chinese decision model. We do not introduce the candidate-letter readout, underlying language architecture, or upstream benchmark as new methods.
+
+The initial completed member uses the Qwen3.5-0.8B text backbone and low-rank adaptation~\citep{hu2021lora}. It is trained for one epoch on all four CJ domains using probability-distribution targets. One checkpoint serves the general, medical, legal, and financial subsets. The next member uses Qwen3.5-2B; its currently available checkpoints additionally use RLCD and a larger training batch. We report those snapshots explicitly as preliminary rather than presenting an unfinished model as a completed release.
+
+This distinction matters empirically. The completed 0.8B model achieves 72.24\% general accuracy and 76.98\% professional-domain average accuracy. The 2B step-2000 snapshot reaches 72.56\% general accuracy but 74.22\% on the professional average. The evidence supports a useful common interface across model sizes, while leaving a controlled analysis of scaling to future experiments.
+
+Our contributions are threefold:
+\begin{itemize}
+\item A shared Chinese decision pipeline for Boolean, categorical, and ordinal questions, including distribution supervision, train/evaluation/serving prompt consistency, and separate validation partitions for selection and temperature fitting.
+\item A full CJ-Bench study of the completed 0.8B member, checkpoint trajectories, and preliminary 2B members, with explicit separation of imported baselines, local measurements, and experimental confounders.
+\item An open deployment implementation with Transformers and GGUF backends, accompanied by full-benchmark quantization comparisons and scoped CPU and GPU measurements.
+\end{itemize}
+
+Code, released 0.8B weights, and the application workbench are available online.\footnote{\href{https://github.com/yanqiangmiffy/chinese-decision}{Source code}; \href{https://huggingface.co/quincyqiang/chinese-decision-0.8b}{0.8B model}; \href{https://github.com/yanqiangmiffy/chinese-decision-studio}{Decision Studio}.}
+
+\section{Related Work}
+\label{sec:related}
+\paragraph{Bounded decisions with language models.}
+Candidate descriptions allow one model to express multiple classification tasks without a separate application-specific output vocabulary. The \texttt{hmm} implementation~\citep{hmm2026} uses answer-letter logits and LoRA for structured decision prediction. We adapt that design to Chinese prompts and distribution-valued supervision. The readout is a constrained classification distribution derived from a language-model head, rather than a distribution over generated answer strings.
+
+\paragraph{Chinese decision resources.}
+Chinese-Jev~\citep{wang2026chinesejev} provides the data and benchmark used here, and studies an encoder-based decision system with general training followed by specialist adaptation. Our implementation instead jointly adapts a causal language backbone across domains. Differences in backbone, objective, and training allocation prevent attributing performance gaps to a single architectural choice.
+
+\paragraph{Adaptation and calibration.}
+LoRA~\citep{hu2021lora} restricts parameter updates to low-rank matrices that can be merged into the backbone. Temperature scaling~\citep{guo2017calibration} adjusts predictive sharpness using a scalar fitted on held-out data. We use these established techniques and distinguish the raw checkpoint from the temperature-scaled deployment artifact. A low aggregate calibration error is an empirical property of a specified evaluation distribution, not a guarantee for arbitrary application inputs.
