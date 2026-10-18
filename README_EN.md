@@ -31,6 +31,7 @@ The model family is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-
 
 - ⚡ **One forward pass, zero output tokens**: reads the logits of candidate letters `A`–`Z` at the last position and applies softmax. No autoregressive decoding, no chain of thought.
 - 🧩 **Three question types**: `noul` (yes/no), `choice` (single choice), and `score` (ordered levels, returns the expected level).
+- 🔢 **More than 26 categories**: one question maps each candidate to a letter (A–Z; training covers 2–16). `choice` questions with more categories go through [`/v1/tournament`](#http-server): grouped rounds and a final, every group within the trained range, no retraining.
 - 🏆 **Two sizes, one model for all four domains**: chinese-decision-2b reaches **84.11%** overall accuracy on the full CJ-Bench and **78.25%** across medical / legal / finance, above the paper's Chinese-Jev (70.82%) and the closed-source Jev (77.01%); chinese-decision-0.8b reaches **83.11% / 76.90%**. Some legal yes/no and finance rating tasks still favor 0.8B.
 - 📏 **Calibrated probabilities**: the released weights ship a validation-fitted temperature; overall ECE is **0.64%** for 2B and **0.27%** for 0.8B, and ECE is lower than every model in the paper in all four domains.
 - 🪶 **GPU and CPU**: both sizes ship BF16 and Q8_0 GGUF packages. chinese-decision-2b-gguf is only **2.01 GB** (about 46.5% smaller than BF16), reaches **84.11%** on the full CJ-Bench, and agrees with BF16 on the top choice **99.00%** of the time; it runs on CPU through llama.cpp without PyTorch.
@@ -38,6 +39,7 @@ The model family is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-
 
 ## News
 
+- 🔢 **2026-10-18**: Added the tournament endpoint [`/v1/tournament`](#http-server), so a `choice` question is no longer limited to the 26 letters A–Z (the server caps it at 1024 by default, set by `MAX_CANDIDATES` in `decision/tournament.py`). Candidates are shuffled into groups of at most 16 and the leaders of each group meet in a final, with no retraining; both the GPU and CPU services support it. [examples/tournament.json](examples/tournament.json) has 41 customer-service intents; on the GPU service, 10 different messages were all classified correctly, each in 4 forward passes and about 150 ms.
 - 🚀 **2026-10-17**: Released **chinese-decision-2b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b)) and the CPU build **chinese-decision-2b-gguf** (Q8_0, 2.01 GB; 🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf)). 2B reaches **84.11%** overall accuracy, a **78.25%** specialized average and **0.64%** ECE; Q8_0 reaches **84.11%** on the full benchmark with **99.00%** top-choice agreement with BF16. CPU checks: [2B CPU deployment](docs/CPU_2B.md) (Chinese).
 - 📊 **2026-10-17**: Qwen3.5-2B + LoRA + RLCD finished training (13,048,000 decisions, best step 4994), and all five stage checkpoints completed the full CJ-Bench. See [2B Training History](#2b-training-history) and the [2B release record](docs/TRAINING_2B.md) (Chinese).
 - 🧪 **2026-10-15**: Open-sourced [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio), a test platform for the model with a decision playground, 8 application scenarios, a robustness lab, an evaluation center and load testing, started with one `docker compose up`. It runs against either the GPU service (`scripts/serve_gpu.py`) or the GGUF service on CPU (`scripts/serve.py`).
@@ -53,7 +55,7 @@ The model family is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-
 | Chinese Decision 2B | Qwen3.5-2B / CE + RLCD | BF16 / 3.76 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b) | [2B](docs/MODEL_CARD_2B.md) |
 | Chinese Decision 2B Q8_0 | Same merged 2B | GGUF / 2.01 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) | [2B GGUF](docs/MODEL_CARD_2B_GGUF.md) |
 
-All four variants have full CJ-Bench results on all 307,900 decisions (see [Evaluation](#evaluation)) and support 16,384 input tokens and 2–26 candidates. Sizes are decimal GB, not runtime memory.
+All four variants have full CJ-Bench results on all 307,900 decisions (see [Evaluation](#evaluation)) and support 16,384 input tokens; one question holds 2–26 candidates (training covers 2–16), and larger `choice` questions go through [`/v1/tournament`](#http-server). Sizes are decimal GB, not runtime memory.
 
 **Which one?** On a GPU, prefer 2B BF16 (highest accuracy). On CPU or under memory limits, use a Q8_0 GGUF, which needs no PyTorch. If latency and resources matter most, or your workload is mainly legal yes/no or finance rating, 0.8B still has an edge. See [model selection and complete comparison](docs/MODELS.md) (Chinese).
 
@@ -495,9 +497,9 @@ Response format (values are illustrative only):
 | `GET /v1/training` | Training progress |
 | `GET /health` | Health check; reports the temperature, whether the model is calibrated and the checkpoint step |
 
-A request may contain up to 64 questions, each with 2–26 candidates and at most 16,384 input tokens. Over-length inputs are **never truncated**; invalid requests return `422`.
+A request may contain up to 64 questions, each with 2–26 candidates (see `/v1/tournament` below for more) and at most 16,384 input tokens. Over-length inputs are **never truncated**; invalid requests return `422`.
 
-**More than 26 candidates: tournaments (`/v1/tournament`)**. The model reads one letter per candidate, and the training data has at most 16 candidates. The server shuffles a larger `choice` question into groups of at most `group_size`, advances the top `keep` of each group until the rest fit one question, and asks that final question. Every group goes through the same prompt compiler, so no retraining is needed:
+**More categories: tournaments (`/v1/tournament`)**. The model reads one letter per candidate, and the training data has at most 16 candidates. The server shuffles a larger `choice` question into groups of at most `group_size`, advances the top `keep` of each group until the rest fit one question, and asks that final question. Every group goes through the same prompt compiler, so no retraining is needed:
 
 ```json
 {
@@ -511,6 +513,34 @@ A request may contain up to 64 questions, each with 2–26 candidates and at mos
 ```
 
 `group_size` is 3–26 (default 16, the largest count seen in training), `keep` is 1 to `group_size // 2` (default 2), and `seed` fixes the grouping. `answer` has the same shape as a `/v1/systemone` answer, but **its probabilities cover the finalists only**; `rounds` records each group's probabilities and who advanced, and `decisions` counts forward passes. With the defaults, 300 candidates take 19 + 3 + 1 = 23 forward passes. A field that already fits in `group_size` is one question, identical to `/v1/systemone`. Tournaments have not been evaluated on CJ-Bench; finalists tend to be close, so their probabilities are flatter, and confidence thresholds should be re-tuned on your own data.
+
+[examples/tournament.json](examples/tournament.json) is a complete example with 41 e-commerce customer-service intents. With the defaults it becomes 3 groups (14 / 14 / 13), and the top 2 of each meet in a 6-candidate final: 4 forward passes in total.
+
+```bash
+curl http://127.0.0.1:8787/v1/tournament \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/tournament.json
+```
+
+```json
+{
+  "model": "chinese-decision-0.8b",
+  "answer": {"type": "choice", "choice": "damaged_item", "confidence": 0.841,
+             "probabilities": {"damaged_item": 0.867, "courier_complaint": 0.071, "repair_request": 0.032,
+                               "other": 0.017, "stock_inquiry": 0.008, "wrong_item": 0.005}},
+  "candidates": 41, "group_size": 16, "keep": 2,
+  "rounds": [{"groups": [
+    {"probabilities": {"...": "this group's 14 candidates"}, "advanced": ["courier_complaint", "other"]},
+    {"probabilities": {"...": "this group's 14 candidates"}, "advanced": ["wrong_item", "stock_inquiry"]},
+    {"probabilities": {"...": "this group's 13 candidates"}, "advanced": ["damaged_item", "repair_request"]}
+  ]}],
+  "usage": {"input_tokens": 813, "output_tokens": 0},
+  "decisions": 4,
+  "latency_ms": 161.4
+}
+```
+
+On the GPU service (0.8B step 10000, T = 1, A800), 10 messages with different intents were all classified correctly, at about 150 ms each. This is a functional demo, not a formal evaluation.
 
 ### Deployment
 

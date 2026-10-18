@@ -11,7 +11,7 @@
 | Chinese Decision 2B | Qwen3.5-2B / CE + RLCD + LoRA | BF16 / 3.76 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b) | [2B](MODEL_CARD_2B.md) |
 | Chinese Decision 2B Q8_0 | 同一 2B 合并权重 | GGUF / 2.01 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) | [2B GGUF](MODEL_CARD_2B_GGUF.md) |
 
-四份模型均使用 hmm-zh-v1、最多 16384 tokens 和 2–26 个候选，支持 noul / choice / score。参数规模使用基础模型名称，文件大小为十进制 GB；实际内存与上下文、后端有关。
+四份模型均使用 hmm-zh-v1、最多 16384 tokens，支持 noul / choice / score；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多的 choice 问题可用服务端的 `/v1/tournament` 分组淘汰（见 [README](../README.md#http-服务)）。参数规模使用基础模型名称，文件大小为十进制 GB；实际内存与上下文、后端有关。
 
 2B 提高总体准确率和跨领域均值，0.8B 的文件和运行成本更小，部分法律判断与金融评分任务仍更好。Q8_0 降低文件/内存占用，速度需要按硬件与长度验证。
 

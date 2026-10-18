@@ -36,7 +36,7 @@ tasks:
 
 </div>
 
-> A lightweight Chinese decision model fine-tuned from Qwen3.5-0.8B. Given a context and a fixed set of 2–26 candidates, it returns a probability for each candidate in a single forward pass, without generating any tokens. It supports yes/no (`noul`), single-choice (`choice`) and ordinal (`score`) questions in general, medical, legal and finance domains.
+> A lightweight Chinese decision model fine-tuned from Qwen3.5-0.8B. Given a context and a fixed set of candidates (2–26 in one question; the serving code splits larger `choice` sets into grouped rounds through `/v1/tournament`), it returns a probability for each candidate in a single forward pass, without generating any tokens. It supports yes/no (`noul`), single-choice (`choice`) and ordinal (`score`) questions in general, medical, legal and finance domains.
 
 ## 模型系列与结果范围
 
@@ -79,7 +79,7 @@ tasks:
 | 发布检查点 | step 10000（全程 10,132 步），按验证集分布 NLL 选出 |
 | 校准温度 | T = 1.108（见 `decision_config.json`） |
 | 最大输入 | 16,384 tokens |
-| 候选项数 | 2–26 |
+| 候选项数 | 单题 2–26（训练数据覆盖 2–16）；类别更多的 `choice` 问题用服务端 `/v1/tournament` 分组淘汰 |
 | 提示版本 | `hmm-zh-v1` |
 | 语言 | 中文 |
 
@@ -261,11 +261,12 @@ curl http://127.0.0.1:8787/v1/systemone \
 | `POST /api/alpha/decisions` | 同上，兼容 hmm 路由 |
 | `POST /v1/batch` | `{"requests": [...], "debug": bool}`，一次提交多个请求，单个请求出错不影响其他 |
 | `POST /v1/compile` | 只编译提示词并计数 token，不跑模型 |
+| `POST /v1/tournament` | 类别更多的 `choice` 问题：分组淘汰后决赛，每组不超过 16 个候选，返回决赛候选的概率 |
 | `GET /v1/info` | 检查点、验证集指标、运行统计 |
 | `GET /v1/training` | 训练进度 |
 | `GET /health` | 健康检查，返回当前温度、是否已校准及检查点 step |
 
-单个请求最多 64 个问题，每个问题 2–26 个候选项，单题输入不超过 16,384 tokens。超长输入不会被截断，而是返回 `422`。
+单个请求最多 64 个问题，单题 2–26 个候选项（类别更多时用 `/v1/tournament`，示例 [examples/tournament.json](https://github.com/yanqiangmiffy/chinese-decision/blob/main/examples/tournament.json) 有 41 个客服意图），单题输入不超过 16,384 tokens。超长输入不会被截断，而是返回 `422`。
 
 GPU 上的生产部署（动态批处理、检查点热更新）使用 `scripts/serve_gpu.py`，见 [deploy/gpu](https://github.com/yanqiangmiffy/chinese-decision/tree/main/deploy/gpu)。服务部署好后可以接入测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)（决策实验台、场景库、鲁棒性实验室、评测与压测）：把服务地址填到平台的 `DECISION_BASE_URL` 即可。
 

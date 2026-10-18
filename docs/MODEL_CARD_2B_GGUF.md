@@ -45,7 +45,7 @@ tasks:
 
 ## 简介
 
-本仓库是 [Chinese Decision 2B](https://huggingface.co/quincyqiang/chinese-decision-2b) 的 GGUF Q8_0 导出，用于 [llama.cpp](https://github.com/ggml-org/llama.cpp) / [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) 推理。原版是一个中文**决策模型**：给定上下文和 2–26 个固定候选项，一次前向直接返回每个候选项的概率，不生成任何 token；支持 `noul`（是/否）、`choice`（单选）、`score`（有序等级）三种题型，覆盖通用、医疗、法律、金融四个领域。
+本仓库是 [Chinese Decision 2B](https://huggingface.co/quincyqiang/chinese-decision-2b) 的 GGUF Q8_0 导出，用于 [llama.cpp](https://github.com/ggml-org/llama.cpp) / [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) 推理。原版是一个中文**决策模型**：给定上下文和一组固定候选项（单题 2–26 个；类别更多的 `choice` 问题可用服务端的 `/v1/tournament` 分组淘汰），一次前向直接返回每个候选项的概率，不生成任何 token；支持 `noul`（是/否）、`choice`（单选）、`score`（有序等级）三种题型，覆盖通用、医疗、法律、金融四个领域。
 
 - **无需 PyTorch 和 GPU**：`llama-cpp-python` 即可在 CPU 上运行，也可用 CUDA 版 llama.cpp 跑在 GPU 上。
 - **体积约为原版的一半**：Q8_0 为 2.01 GB，原版 safetensors 为 3.76 GB。
@@ -65,7 +65,7 @@ tasks:
 | 大小 | **2,012,012,800 字节，约 2.01 GB / 1.87 GiB** |
 | 相对源 safetensors | 体积减少约 46.5% |
 | 温度 | **1.074872374534607**，沿用独立验证拟合值，量化后未重拟合 |
-| 输入 / 候选项 | 最长 16,384 tokens / 2–26 项 |
+| 输入 / 候选项 | 最长 16,384 tokens / 单题 2–26 项（训练覆盖 2–16 项），类别更多用 `/v1/tournament` 分组淘汰 |
 | 提示版本 | hmm-zh-v1，单次前向读取候选字母 logits |
 | 实测运行库 | llama-cpp-python 0.3.36，支持 Qwen3.5 混合注意力架构 |
 | 发布 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) |
@@ -172,9 +172,10 @@ finally:
 | `POST /api/alpha/decisions` | 兼容 hmm 的同一决策路由 |
 | `POST /v1/batch` | 多请求批处理，单个请求失败不影响其他请求 |
 | `POST /v1/compile` | 编译输入并计数 tokens |
+| `POST /v1/tournament` | 类别更多的 `choice` 问题：分组淘汰后决赛，每组不超过 16 个候选 |
 | `GET /health`、`GET /v1/info` | 模型身份、step、温度及运行信息 |
 
-每个请求最多 64 个问题，每题 2–26 个候选，最长 16,384 tokens；超长或不合法输入返回 422，不静默截断。`score` 输出从 0 开始的等级期望值，不是最大概率等级；`confidence = (K*p_max-1)/(K-1)` 衡量分布尖锐程度，不等于经验准确率。
+每个请求最多 64 个问题，每题 2–26 个候选（类别更多时用 `/v1/tournament`，示例 [examples/tournament.json](https://github.com/yanqiangmiffy/chinese-decision/blob/main/examples/tournament.json) 有 41 个客服意图），最长 16,384 tokens；超长或不合法输入返回 422，不静默截断。`score` 输出从 0 开始的等级期望值，不是最大概率等级；`confidence = (K*p_max-1)/(K-1)` 衡量分布尖锐程度，不等于经验准确率。
 
 ## 量化质量：CJ-Bench 全量对照
 

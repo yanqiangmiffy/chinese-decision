@@ -60,7 +60,7 @@ tasks:
 
 本仓库是 [Chinese Decision 0.8B](https://huggingface.co/quincyqiang/chinese-decision-0.8b) 的 GGUF 格式导出，用于 [llama.cpp](https://github.com/ggml-org/llama.cpp) / [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) 推理。
 
-原版模型是一个中文**决策模型**：给定上下文和 2–26 个固定候选项，一次前向直接返回每个候选项的概率，不生成任何 token。支持 `noul`（是/否）、`choice`（单选）、`score`（有序等级）三种题型，覆盖通用、医疗、法律、金融四个领域。模型能力、训练细节与应用案例见[原版模型卡](https://huggingface.co/quincyqiang/chinese-decision-0.8b)。
+原版模型是一个中文**决策模型**：给定上下文和一组固定候选项（单题 2–26 个；类别更多的 `choice` 问题可用服务端的 `/v1/tournament` 分组淘汰），一次前向直接返回每个候选项的概率，不生成任何 token。支持 `noul`（是/否）、`choice`（单选）、`score`（有序等级）三种题型，覆盖通用、医疗、法律、金融四个领域。模型能力、训练细节与应用案例见[原版模型卡](https://huggingface.co/quincyqiang/chinese-decision-0.8b)。
 
 GGUF 版本的特点：
 
@@ -219,7 +219,7 @@ curl http://127.0.0.1:8787/v1/systemone \
   --data-binary @examples/request.json
 ```
 
-接口、输入格式与原版一致（`POST /v1/systemone`、`POST /api/alpha/decisions`、`POST /v1/batch`、`POST /v1/compile`、`GET /v1/info`、`GET /v1/training`、`GET /health`），详见[原版模型卡](https://huggingface.co/quincyqiang/chinese-decision-0.8b)。服务启动时会检查 26 个候选字母的 token ID，并对每个请求核对 GGUF 与原版分词器的切分结果是否一致。
+接口、输入格式与原版一致（`POST /v1/systemone`、`POST /api/alpha/decisions`、`POST /v1/batch`、`POST /v1/compile`、`POST /v1/tournament`、`GET /v1/info`、`GET /v1/training`、`GET /health`），详见[原版模型卡](https://huggingface.co/quincyqiang/chinese-decision-0.8b)。服务启动时会检查 26 个候选字母的 token ID，并对每个请求核对 GGUF 与原版分词器的切分结果是否一致。
 
 这个服务可以直接接入测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)（决策实验台、场景库、鲁棒性实验室、评测与压测）：把服务地址填到平台的 `DECISION_BASE_URL`。CPU 上单批评测耗时更长，建议同时设 `EVAL_BATCH_SIZE=16`。
 

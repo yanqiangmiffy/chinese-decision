@@ -1,8 +1,10 @@
+import json
 import math
 import re
 import unittest
 from argparse import Namespace
 from concurrent.futures import Future
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 from decision.tournament import MAX_CANDIDATES, from_request
 from scripts import serve, serve_gpu
 
+ROOT = Path(__file__).resolve().parents[1]
 TARGET = "k137"
 CANDIDATES = {f"k{i}": f"第{i}号产品" for i in range(300)}
 
@@ -146,6 +149,13 @@ class TournamentTests(unittest.TestCase):
         play(match)
         with self.assertRaises(ValueError):
             match.record([[1.]])
+
+    def test_example_request_has_more_candidates_than_letters(self):
+        example = json.loads((ROOT / "examples/tournament.json").read_text(encoding="utf-8"))
+        match = from_request(example)
+        self.assertEqual(len(match.criteria), 41)
+        asked = play(match)
+        self.assertEqual([[len(g) for g in groups] for groups in asked], [[14, 14, 13], [6]])
 
 
 class TournamentRouteTests(unittest.TestCase):

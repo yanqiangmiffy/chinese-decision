@@ -31,6 +31,7 @@
 
 - ⚡ **一次前向，零输出 token**：读取最后位置上候选字母 `A`–`Z` 的 logits，softmax 后即为概率；不做自回归生成，也没有思维链。
 - 🧩 **三种题型**：`noul`（是/否）、`choice`（单选）、`score`（有序等级，返回期望分值）。
+- 🔢 **类别数不止 26 个**：单题每个候选对应一个字母（A–Z，训练数据覆盖 2–16 个）；类别更多的 `choice` 问题用 [`/v1/tournament`](#http-服务) 分组淘汰后决赛，每组仍在训练覆盖范围内，不需要重新训练。
 - 🏆 **两种尺寸，单模型覆盖四个领域**：chinese-decision-2b 在 CJ-Bench 全量上整体 ACC **84.11%**，医疗 / 法律 / 金融平均 **78.25%**，高于论文报告的 Chinese-Jev（70.82%）和闭源 Jev（77.01%）；chinese-decision-0.8b 为 **83.11% / 76.90%**。法律判断与金融评分等部分任务仍是 0.8B 更好。
 - 📏 **概率经过校准**：发布权重附带验证集拟合的温度，整体 ECE 2B 为 **0.64%**、0.8B 为 **0.27%**，四个领域的 ECE 都低于论文中的模型。
 - 🪶 **GPU / CPU 部署**：两个尺寸均提供 BF16 与 Q8_0 GGUF。chinese-decision-2b-gguf 只有 **2.01 GB**（比 BF16 小约 46.5%），CJ-Bench 全量 ACC **84.11%**，与 BF16 版的首选项一致率 **99.00%**；CPU 上用 llama.cpp 运行，不需要 PyTorch。
@@ -38,6 +39,7 @@
 
 ## 最新动态
 
+- 🔢 **2026-10-18**：新增分组淘汰接口 [`/v1/tournament`](#http-服务)，`choice` 问题的类别数不再受 A–Z 26 个字母限制（服务端默认上限 1024，由 `decision/tournament.py` 的 `MAX_CANDIDATES` 设定）。候选先随机分成每组不超过 16 个，各组前几名晋级决赛，不需要重新训练；GPU 与 CPU 服务都已支持。示例 [examples/tournament.json](examples/tournament.json) 有 41 个客服意图，在 GPU 服务上换用 10 条留言全部选对，每题 4 次前向、约 150 ms。
 - 🚀 **2026-10-17**：发布 **chinese-decision-2b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b)）与 CPU 版 **chinese-decision-2b-gguf**（Q8_0，2.01 GB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf)）。2B 整体 ACC **84.11%**、专业平均 **78.25%**、ECE **0.64%**；Q8_0 全量 ACC **84.11%**，与 BF16 首选项一致率 **99.00%**，CPU 检查见 [2B CPU 部署](docs/CPU_2B.md)。
 - 📊 **2026-10-17**：Qwen3.5-2B + LoRA + RLCD 完成训练（13,048,000 条决策，best step 4994），五个阶段的 checkpoint 均完成 CJ-Bench 全量评测，见 [2B 训练阶段历史](#2b-训练阶段历史) 与 [2B 训练与交付记录](docs/TRAINING_2B.md)。
 - 🧪 **2026-10-15**：开源决策模型测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)：决策实验台、8 个应用场景、鲁棒性实验室、评测中心和性能压测，`docker compose up` 一条命令启动；可以直接接 GPU 服务（`scripts/serve_gpu.py`），也可以接 CPU 上的 GGUF 服务（`scripts/serve.py`）。
@@ -53,7 +55,7 @@
 | Chinese Decision 2B | Qwen3.5-2B / CE + RLCD | BF16 / 3.76 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b) | [2B](docs/MODEL_CARD_2B.md) |
 | Chinese Decision 2B Q8_0 | 同一 2B 合并权重 | GGUF / 2.01 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) | [2B GGUF](docs/MODEL_CARD_2B_GGUF.md) |
 
-四个版本都已在 CJ-Bench 全量 307,900 条上完成评测（成绩见[评测结果](#评测结果)），全部支持 16384 tokens 与 2–26 个候选；大小为十进制 GB，不是运行内存。
+四个版本都已在 CJ-Bench 全量 307,900 条上完成评测（成绩见[评测结果](#评测结果)），全部支持 16384 tokens；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多时用 [`/v1/tournament`](#http-服务) 分组淘汰；大小为十进制 GB，不是运行内存。
 
 **怎么选**：GPU 上优先 2B BF16（准确率最高）；CPU 或内存受限时用 Q8_0 GGUF，不需要 PyTorch；对延迟和资源最敏感、或主要处理法律判断 / 金融评分类任务时，0.8B 仍有优势。完整选型、分领域和外部基线见 [模型总览](docs/MODELS.md)。
 
@@ -491,9 +493,9 @@ curl http://127.0.0.1:8787/v1/systemone \
 | `GET /v1/training` | 训练进度 |
 | `GET /health` | 健康检查，返回当前温度、是否已校准及检查点 step |
 
-单个请求最多 64 个问题，每个问题 2–26 个候选项，单题输入不超过 16,384 tokens。超长输入**不会被截断**，非法请求返回 `422`。
+单个请求最多 64 个问题，单题 2–26 个候选项（类别更多时见下文 `/v1/tournament`），输入不超过 16,384 tokens。超长输入**不会被截断**，非法请求返回 `422`。
 
-**候选超过 26 个：分组淘汰（`/v1/tournament`）**。模型每个候选读一个字母，训练数据最多只有 16 个候选。更多候选的 `choice` 问题由服务端随机分成每组不超过 `group_size` 个，每组前 `keep` 名晋级，直到剩下的候选能放进一题，再做决赛。每组仍走同一个提示编译器，不需要重新训练：
+**类别更多时：分组淘汰（`/v1/tournament`）**。模型每个候选读一个字母，训练数据最多只有 16 个候选。更多候选的 `choice` 问题由服务端随机分成每组不超过 `group_size` 个，每组前 `keep` 名晋级，直到剩下的候选能放进一题，再做决赛。每组仍走同一个提示编译器，不需要重新训练：
 
 ```json
 {
@@ -507,6 +509,34 @@ curl http://127.0.0.1:8787/v1/systemone \
 ```
 
 `group_size` 取 3–26（默认 16，即训练覆盖的最大候选数），`keep` 取 1 到 `group_size // 2`（默认 2），`seed` 决定分组。返回的 `answer` 与 `/v1/systemone` 的单题格式相同，但**概率只覆盖决赛候选**；`rounds` 记录每轮各组的概率和晋级者，`decisions` 是前向次数。300 个候选按默认参数是 19 + 3 + 1 = 23 次前向。候选不超过 `group_size` 时只问一题，结果与 `/v1/systemone` 相同。分组淘汰尚未在 CJ-Bench 上评测；决赛候选都比较接近，概率会偏平，按置信度设阈值时要用自己的数据重新确定。
+
+完整示例 [examples/tournament.json](examples/tournament.json) 是 41 个电商客服意图：按默认参数分成 3 组（14 / 14 / 13），每组前 2 名进入 6 个候选的决赛，共 4 次前向。
+
+```bash
+curl http://127.0.0.1:8787/v1/tournament \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/tournament.json
+```
+
+```json
+{
+  "model": "chinese-decision-0.8b",
+  "answer": {"type": "choice", "choice": "damaged_item", "confidence": 0.841,
+             "probabilities": {"damaged_item": 0.867, "courier_complaint": 0.071, "repair_request": 0.032,
+                               "other": 0.017, "stock_inquiry": 0.008, "wrong_item": 0.005}},
+  "candidates": 41, "group_size": 16, "keep": 2,
+  "rounds": [{"groups": [
+    {"probabilities": {"...": "本组 14 个候选的概率"}, "advanced": ["courier_complaint", "other"]},
+    {"probabilities": {"...": "本组 14 个候选的概率"}, "advanced": ["wrong_item", "stock_inquiry"]},
+    {"probabilities": {"...": "本组 13 个候选的概率"}, "advanced": ["damaged_item", "repair_request"]}
+  ]}],
+  "usage": {"input_tokens": 813, "output_tokens": 0},
+  "decisions": 4,
+  "latency_ms": 161.4
+}
+```
+
+在 GPU 服务（0.8B step 10000，T = 1，A800）上换用 10 条不同意图的留言，全部选对，每题约 150 ms。这只是功能演示，不是正式评测。
 
 ### 部署
 

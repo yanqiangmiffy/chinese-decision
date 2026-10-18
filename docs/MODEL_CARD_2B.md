@@ -64,7 +64,7 @@ tasks:
 | RLCD | group size 4，sigma 按已训练样本进度从 0.4 降至 0.1 |
 | 交付权重 | model.safetensors，BF16，3,763,692,048 字节 |
 | 默认温度 | **1.074872374534607**，独立验证划分拟合 |
-| 输入 / 候选项 | 最长 16,384 tokens / 2–26 项 |
+| 输入 / 候选项 | 最长 16,384 tokens / 单题 2–26 项（训练覆盖 2–16 项），类别更多用 `/v1/tournament` 分组淘汰 |
 | 提示版本 | hmm-zh-v1，关闭 thinking，末位候选字母 logits |
 | 训练结束 | 2026-10-17 17:25:54，Asia/Shanghai |
 
@@ -190,9 +190,10 @@ for name, question in questions.items():
 | `POST /api/alpha/decisions` | 兼容 hmm 的同一决策路由 |
 | `POST /v1/batch` | 多请求批处理，单个请求失败不影响其他请求 |
 | `POST /v1/compile` | 编译输入并计数 tokens |
+| `POST /v1/tournament` | 类别更多的 `choice` 问题：分组淘汰后决赛，每组不超过 16 个候选 |
 | `GET /health`、`GET /v1/info` | 模型身份、step、温度及运行信息 |
 
-每个请求最多 64 个问题，每题 2–26 个候选，最长 16,384 tokens；超长或不合法输入返回 422，不静默截断。`score` 输出从 0 开始的等级期望值，不是最大概率等级；`confidence = (K*p_max-1)/(K-1)` 衡量分布尖锐程度，不等于经验准确率。
+每个请求最多 64 个问题，每题 2–26 个候选（类别更多时用 `/v1/tournament`，示例 [examples/tournament.json](https://github.com/yanqiangmiffy/chinese-decision/blob/main/examples/tournament.json) 有 41 个客服意图），最长 16,384 tokens；超长或不合法输入返回 422，不静默截断。`score` 输出从 0 开始的等级期望值，不是最大概率等级；`confidence = (K*p_max-1)/(K-1)` 衡量分布尖锐程度，不等于经验准确率。
 
 ## CJ-Bench 全量结果
 
