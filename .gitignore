@@ -12,6 +12,10 @@ runs/
 reports/
 logs/
 *.log
+output/
+outputs/
+paper/
+papers/
 
 # Personal launchers, server tools, and notes (see README: local/ is not part of the project)
 local/

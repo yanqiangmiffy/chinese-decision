@@ -1,3 +1,0 @@
-# Optional: only needed to regenerate the already bundled figures/tables locally.
-# Overleaf compilation does not use Python.
-matplotlib>=3.8
