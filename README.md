@@ -486,11 +486,27 @@ curl http://127.0.0.1:8787/v1/systemone \
 | `POST /api/alpha/decisions` | 同上，兼容 hmm 路由 |
 | `POST /v1/batch` | `{"requests": [...], "debug": bool}`，一次提交多个请求，单个请求出错不影响其他 |
 | `POST /v1/compile` | 只编译提示词并计数 token，不跑模型 |
+| `POST /v1/tournament` | 候选多于一题能放下的 `choice` 问题：分组淘汰后决赛，见下文 |
 | `GET /v1/info` | 检查点、验证集指标、运行统计 |
 | `GET /v1/training` | 训练进度 |
 | `GET /health` | 健康检查，返回当前温度、是否已校准及检查点 step |
 
 单个请求最多 64 个问题，每个问题 2–26 个候选项，单题输入不超过 16,384 tokens。超长输入**不会被截断**，非法请求返回 `422`。
+
+**候选超过 26 个：分组淘汰（`/v1/tournament`）**。模型每个候选读一个字母，训练数据最多只有 16 个候选。更多候选的 `choice` 问题由服务端随机分成每组不超过 `group_size` 个，每组前 `keep` 名晋级，直到剩下的候选能放进一题，再做决赛。每组仍走同一个提示编译器，不需要重新训练：
+
+```json
+{
+  "state": "用户希望了解第 137 号产品。",
+  "question": {"type": "choice", "instructions": "用户想了解哪个产品？",
+               "criteria": {"p0": "第 0 号产品", "p1": "第 1 号产品", "...": "最多 1024 个候选"}},
+  "group_size": 16,
+  "keep": 2,
+  "seed": 0
+}
+```
+
+`group_size` 取 3–26（默认 16，即训练覆盖的最大候选数），`keep` 取 1 到 `group_size // 2`（默认 2），`seed` 决定分组。返回的 `answer` 与 `/v1/systemone` 的单题格式相同，但**概率只覆盖决赛候选**；`rounds` 记录每轮各组的概率和晋级者，`decisions` 是前向次数。300 个候选按默认参数是 19 + 3 + 1 = 23 次前向。候选不超过 `group_size` 时只问一题，结果与 `/v1/systemone` 相同。分组淘汰尚未在 CJ-Bench 上评测；决赛候选都比较接近，概率会偏平，按置信度设阈值时要用自己的数据重新确定。
 
 ### 部署
 
@@ -606,6 +622,7 @@ chinese-decision/
 │   ├── rlcd.py             #   可选 RLCD 训练项（移植自 Chinese-Jev）
 │   ├── metrics.py          #   验证集指标与 CJ-Bench 指标
 │   ├── api.py              #   决策响应格式与校验
+│   ├── tournament.py       #   候选超过一题容量时的分组淘汰
 │   └── utils.py            #   日志、原子写入、SHA256
 ├── scripts/                # 命令行入口
 │   ├── prepare_data.py     #   数据校验与重新分片

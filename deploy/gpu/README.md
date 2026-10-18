@@ -55,6 +55,7 @@ cd ~/decision-service && GPU=2 PORT=8003 deploy/gpu/start.sh   # 重启
 | POST | `/api/alpha/decisions` | 同上，兼容 hmm 路由 |
 | POST | `/v1/batch` | `{"requests": [...], "debug": bool}`，最多 512 个请求 / 4096 个决策，单个请求出错不影响其他 |
 | POST | `/v1/compile` | 只编译提示词并计数 token |
+| POST | `/v1/tournament` | 候选超过一题能放下的 `choice` 问题：分组淘汰后决赛（见主 README） |
 | GET | `/v1/info` | 检查点、验证集指标、GPU、引擎配置、运行统计（延迟分位数、平均批大小、最近的前向） |
 | GET | `/v1/training` | 训练目录的进度（只读） |
 | POST | `/v1/admin/reload` | 快照最新的 best 并热加载，需要请求头 `X-Admin-Token` |

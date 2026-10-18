@@ -11,6 +11,7 @@ scripts/serve.py，两者的接口和返回格式一致。
 扩展接口：
   POST /v1/batch                一次提交多个决策请求，跨请求合批（评测、解释、鲁棒性测试用）
   POST /v1/compile              只编译提示词并计数 token，不跑模型
+  POST /v1/tournament           候选超过一题能放下的数量时分组淘汰、决赛选出（decision/tournament.py）
   GET  /v1/info                 模型、检查点、GPU、运行统计、验证集指标
   GET  /v1/training             训练目录的实时进度（只读）
   POST /v1/admin/reload         把训练目录里最新的 best 快照下来并热加载（需要 X-Admin-Token）
@@ -44,6 +45,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from decision.api import build_answer
 from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
 from decision.schema import LETTERS, PROMPT_VERSION, compile_prompt, options_for
+from decision.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
+from decision.tournament import from_request as tournament_from
 from decision.utils import model_name_for
 
 MAX_LENGTH = 16384
@@ -254,11 +257,16 @@ def compile_request(checkpoint, body):
         raise RequestError("questions must be a nonempty object")
     if len(questions) > MAX_QUESTIONS:
         raise RequestError(f"at most {MAX_QUESTIONS} questions per request")
+    return compile_questions(checkpoint, body["state"], questions)
+
+
+def compile_questions(checkpoint, state, questions):
+    """编译同一个 state 下的多个问题（不限题数），返回 [(name, question, options, input_ids, prompt)]。"""
     compiled = []
     for name, question in questions.items():
         try:
             options = options_for(question)
-            prompt = compile_prompt(checkpoint.tokenizer, body["state"], question["instructions"], options)
+            prompt = compile_prompt(checkpoint.tokenizer, state, question["instructions"], options)
         except (KeyError, TypeError, ValueError) as exc:
             raise RequestError(f"question {name}: {exc}") from exc
         ids = checkpoint.tokenizer.encode(prompt, add_special_tokens=False)
@@ -269,12 +277,14 @@ def compile_request(checkpoint, body):
     return compiled
 
 
+def probabilities_for(checkpoint, logits):
+    return (torch.tensor(logits) / checkpoint.temperature).softmax(-1).tolist()
+
+
 def make_response(checkpoint, compiled, logits_rows, latency_ms, debug=False):
     answers = {}
     for (name, question, options, ids, _), logits in zip(compiled, logits_rows, strict=True):
-        scaled = torch.tensor(logits) / checkpoint.temperature
-        probabilities = scaled.softmax(-1).tolist()
-        answer = build_answer(question["type"], options, probabilities)
+        answer = build_answer(question["type"], options, probabilities_for(checkpoint, logits))
         if debug:
             answer["logits"] = {key: round(value, 4) for (key, _), value in zip(options, logits, strict=True)}
             answer["input_tokens"] = len(ids)
@@ -437,6 +447,30 @@ def create_app(args):
         return {"model": current.model_name, "results": results, "usage": {"input_tokens": tokens, "output_tokens": 0},
                 "decisions": total, "latency_ms": latency}
 
+    @app.post("/v1/tournament")
+    async def tournament(body: dict):
+        """{state, question: choice, group_size=16, keep=2, seed=0}：每组不超过 group_size 个候选，
+        每组前 keep 名晋级，直到剩下的候选能放进一题。answer 的概率只覆盖决赛候选。"""
+        started = time.perf_counter()
+        current = engine.checkpoint
+        try:
+            match = tournament_from(body)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        tokens = 0
+        while not match.done:
+            try:
+                compiled = await asyncio.to_thread(compile_questions, current, match.state, match.questions())
+            except RequestError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            tokens += sum(len(c[3]) for c in compiled)
+            logits = await asyncio.wrap_future(engine.submit([{"input_ids": c[3], "k": len(c[2])} for c in compiled]))
+            match.record([probabilities_for(current, row) for row in logits])
+        latency = 1000 * (time.perf_counter() - started)
+        engine.record(latency, match.decisions, tokens)
+        return {"model": current.model_name, **match.result(), "usage": {"input_tokens": tokens, "output_tokens": 0},
+                "decisions": match.decisions, "latency_ms": latency}
+
     @app.post("/v1/compile")
     async def compile_only(body: dict):
         current = engine.checkpoint
@@ -454,7 +488,8 @@ def create_app(args):
         current = engine.checkpoint
         return {"model": current.model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
                 "limits": {"max_length": current.max_length, "max_questions": MAX_QUESTIONS,
-                           "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS},
+                           "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS,
+                           "max_tournament_candidates": MAX_TOURNAMENT_CANDIDATES},
                 "checkpoint": current.describe(), "validation": current.validation,
                 "engine": {"token_budget": engine.token_budget, "max_batch": engine.max_batch,
                            "max_wait_ms": engine.max_wait * 1000},

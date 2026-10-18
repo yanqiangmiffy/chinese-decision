@@ -1,7 +1,8 @@
 """hmm / System One-compatible HTTP API: one forward pass per question, no generated tokens.
 
-Also serves the routes Decision Studio uses (/v1/batch, /v1/compile, /v1/info, /v1/training) with the
-same request and response shapes as scripts/serve_gpu.py, so either can back the platform. Questions are
+Also serves the routes Decision Studio uses (/v1/batch, /v1/compile, /v1/info, /v1/training) and
+/v1/tournament (choice questions with more candidates than one prompt holds) with the same request and
+response shapes as scripts/serve_gpu.py, so either can back the platform. Questions are
 evaluated one at a time; for dynamic batching and checkpoint hot reload on a GPU, use serve_gpu.py.
 """
 import argparse
@@ -19,6 +20,8 @@ from fastapi import FastAPI, HTTPException
 from decision.api import build_answer
 from decision.inference import GGUFBackend, TransformersBackend, candidate_probabilities
 from decision.schema import LETTERS, MAX_LENGTH, PROMPT_VERSION, compile_prompt, options_for
+from decision.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
+from decision.tournament import from_request as tournament_from
 from decision.utils import model_name_for
 
 MAX_QUESTIONS = 64
@@ -136,11 +139,15 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
             raise RequestError("state and nonempty questions are required")
         if len(body["questions"]) > MAX_QUESTIONS:
             raise RequestError(f"at most {MAX_QUESTIONS} questions per request")
+        return compile_questions(body["state"], body["questions"])
+
+    def compile_questions(state, questions):
+        """Compile any number of questions about one state."""
         compiled = []
-        for name, question in body["questions"].items():
+        for name, question in questions.items():
             try:
                 options = options_for(question)
-                prompt = compile_prompt(tokenizer, body["state"], question["instructions"], options)
+                prompt = compile_prompt(tokenizer, state, question["instructions"], options)
                 ids = tokenizer.encode(prompt, add_special_tokens=False)
                 if len(ids) > max_length:
                     raise ValueError(f"input has {len(ids)} tokens; limit {max_length}; input was not truncated")
@@ -247,6 +254,28 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
         return {"model": model_name, "results": results, "usage": {"input_tokens": tokens, "output_tokens": 0},
                 "decisions": total, "latency_ms": latency}
 
+    @app.post("/v1/tournament")
+    def tournament(body: dict):
+        """{state, question: choice, group_size=16, keep=2, seed=0}: groups of at most group_size candidates,
+        the top `keep` of each advance until the rest fit one question. Answer probabilities cover finalists."""
+        started = time.perf_counter()
+        try:
+            match = tournament_from(body)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        tokens = 0
+        while not match.done:
+            try:
+                compiled = compile_questions(match.state, match.questions())
+            except RequestError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            tokens += sum(len(c[3]) for c in compiled)
+            match.record([candidate_probabilities(logits, temperature) for logits in evaluate(compiled)])
+        latency = 1000 * (time.perf_counter() - started)
+        stats.record(latency, match.decisions, tokens)
+        return {"model": model_name, **match.result(), "usage": {"input_tokens": tokens, "output_tokens": 0},
+                "decisions": match.decisions, "latency_ms": latency}
+
     @app.post("/v1/compile")
     def compile_only(body: dict):
         """Compile prompts and count tokens without running the model."""
@@ -264,7 +293,8 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
     def info():
         return {"model": model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
                 "limits": {"max_length": max_length, "max_questions": MAX_QUESTIONS,
-                           "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS},
+                           "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS,
+                           "max_tournament_candidates": MAX_TOURNAMENT_CANDIDATES},
                 "checkpoint": checkpoint, "validation": validation,
                 # No dynamic batching: every forward pass is one prompt of at most max_length tokens.
                 "engine": {"backend": engine.name, "device": engine.device, "threads": threads,

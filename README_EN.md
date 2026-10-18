@@ -490,11 +490,27 @@ Response format (values are illustrative only):
 | `POST /api/alpha/decisions` | Same as above; hmm-compatible route |
 | `POST /v1/batch` | `{"requests": [...], "debug": bool}`: several requests at once; one invalid request does not fail the others |
 | `POST /v1/compile` | Compile prompts and count tokens without running the model |
+| `POST /v1/tournament` | `choice` questions with more candidates than one prompt holds: group rounds, then a final (see below) |
 | `GET /v1/info` | Checkpoint, validation metrics and serving statistics |
 | `GET /v1/training` | Training progress |
 | `GET /health` | Health check; reports the temperature, whether the model is calibrated and the checkpoint step |
 
 A request may contain up to 64 questions, each with 2–26 candidates and at most 16,384 input tokens. Over-length inputs are **never truncated**; invalid requests return `422`.
+
+**More than 26 candidates: tournaments (`/v1/tournament`)**. The model reads one letter per candidate, and the training data has at most 16 candidates. The server shuffles a larger `choice` question into groups of at most `group_size`, advances the top `keep` of each group until the rest fit one question, and asks that final question. Every group goes through the same prompt compiler, so no retraining is needed:
+
+```json
+{
+  "state": "用户希望了解第 137 号产品。",
+  "question": {"type": "choice", "instructions": "用户想了解哪个产品？",
+               "criteria": {"p0": "第 0 号产品", "p1": "第 1 号产品", "...": "up to 1024 candidates"}},
+  "group_size": 16,
+  "keep": 2,
+  "seed": 0
+}
+```
+
+`group_size` is 3–26 (default 16, the largest count seen in training), `keep` is 1 to `group_size // 2` (default 2), and `seed` fixes the grouping. `answer` has the same shape as a `/v1/systemone` answer, but **its probabilities cover the finalists only**; `rounds` records each group's probabilities and who advanced, and `decisions` counts forward passes. With the defaults, 300 candidates take 19 + 3 + 1 = 23 forward passes. A field that already fits in `group_size` is one question, identical to `/v1/systemone`. Tournaments have not been evaluated on CJ-Bench; finalists tend to be close, so their probabilities are flatter, and confidence thresholds should be re-tuned on your own data.
 
 ### Deployment
 
@@ -610,6 +626,7 @@ chinese-decision/
 │   ├── rlcd.py             #   optional RLCD training term (ported from Chinese-Jev)
 │   ├── metrics.py          #   validation and CJ-Bench metrics
 │   ├── api.py              #   decision response format and checks
+│   ├── tournament.py       #   grouped rounds for more candidates than one prompt holds
 │   └── utils.py            #   logging, atomic writes, SHA256
 ├── scripts/                # Command-line entry points
 │   ├── prepare_data.py     #   dataset verification and re-sharding
