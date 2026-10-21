@@ -41,3 +41,4 @@ tmp
 
 # Local deploy settings (hosts, keys, remote paths)
 deploy/*/deploy.env
+experiments
