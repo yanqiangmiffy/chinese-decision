@@ -40,11 +40,11 @@ tasks:
 
 ## 模型系列与结果范围
 
-本文保留 **0.8B** 已发布版本的使用方法和既有评测。本次文档更新没有重新运行 0.8B；新增 2B 及其 Q8_0 是独立权重与报告，不能混用其温度或测试数字。
+本文介绍 **0.8B** 已发布版本的使用方法和评测结果。2B、4B 及其 Q8_0 是独立的权重与报告，不能混用其温度或测试数字。
 
-[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md)
+[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md) · [4B BF16](MODEL_CARD_4B.md) · [4B Q8_0](MODEL_CARD_4B_GGUF.md)
 
-[各尺寸、部署格式与外部模型对比](MODELS.md)。2B BF16 与 2B Q8_0 均已公开发布并完成 CJ-Bench 全量评测：2B 整体准确率更高，0.8B 更小更快，部分法律判断与金融评分任务仍是 0.8B 更好。
+[各尺寸、部署格式与外部模型对比](MODELS.md)。三个尺寸均已公开发布并完成 CJ-Bench 全量评测：4B 准确率最高，2B 居中，0.8B 最小最快、整体 ECE 最低。
 
 ## 相关资源
 
@@ -54,6 +54,7 @@ tasks:
 | 测试平台 | Decision Studio：决策实验台、场景库、鲁棒性实验室、评测中心与性能压测 | [GitHub](https://github.com/yanqiangmiffy/chinese-decision-studio) |
 | 模型（BF16，本仓库） | 合并后的权重与校准温度，transformers 推理 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b) |
 | 模型（GGUF Q8_0） | llama.cpp 推理，CPU 即可部署，不需要 PyTorch | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf) |
+| 4B 系列 | 系列中准确率最高的 4B 版本（CE + RLCD）；BF16 与 GGUF Q8_0 | BF16：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)；GGUF：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf) |
 | 2B 系列 | 更大的 2B 版本（CE + RLCD），整体准确率更高；BF16 与 GGUF Q8_0 | BF16：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b)；GGUF：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) |
 
 ## 简介
@@ -98,7 +99,7 @@ tasks:
 
 ## 应用案例
 
-以下截图来自我们的测试平台 Decision Studio，后端运行的就是本模型（step 10000）。这些场景采用同一种设计：**业务规则写在代码里，决策模型只负责给出概率**。
+以下截图来自我们的测试平台 Decision Studio，后端运行的就是本模型。这些场景采用同一种设计：**业务规则写在代码里，决策模型只负责给出概率**。
 
 ### 工单分诊台：一次请求，六个判断
 
@@ -306,23 +307,23 @@ B: {key₂} — {描述₂}
 
 在 CJ-Dataset 官方 validation 的分层子集上评测：4 个领域 × 3 种题型，每组 100 条，共 1,200 条。这部分数据在训练中用于模型选择，**不是测试集成绩**。温度在另一个互不重叠的划分（1,993 条硬标签样本）上拟合。
 
-| 领域 | Qwen3.5-0.8B 零样本 ACC | step 5000 ACC | **本模型 ACC** | 本模型 ECE（T = 1） | 本模型 ECE（T = 1.108） | 本模型 NLL（T = 1.108） |
-|---|---:|---:|---:|---:|---:|---:|
-| 通用 | 36.64 | 74.32 | **75.34** | 3.69 | 5.18 | 0.625 |
-| 医疗 | 16.67 | 82.00 | **82.33** | 3.51 | 3.76 | 0.400 |
-| 法律 | 40.67 | 63.33 | **64.33** | 8.62 | 7.47 | 0.739 |
-| 金融 | 44.33 | 69.67 | **71.67** | 3.72 | 3.67 | 0.638 |
-| **整体** | 34.56 | 72.32 | **73.41** | 2.53 | **1.62** | 0.601 |
+| 领域 | Qwen3.5-0.8B 零样本 ACC | **本模型 ACC** | 本模型 ECE（T = 1） | 本模型 ECE（T = 1.108） | 本模型 NLL（T = 1.108） |
+|---|---:|---:|---:|---:|---:|
+| 通用 | 36.64 | **75.34** | 3.69 | 5.18 | 0.625 |
+| 医疗 | 16.67 | **82.33** | 3.51 | 3.76 | 0.400 |
+| 法律 | 40.67 | **64.33** | 8.62 | 7.47 | 0.739 |
+| 金融 | 44.33 | **71.67** | 3.72 | 3.67 | 0.638 |
+| **整体** | 34.56 | **73.41** | 2.53 | **1.62** | 0.601 |
 
-| 题型 | step 5000 ACC | **本模型 ACC** | 本模型 ECE（T = 1） | 本模型 ECE（T = 1.108） |
-|---|---:|---:|---:|---:|
-| `noul` | 83.25 | **85.75** | 2.76 | 3.44 |
-| `choice` | 69.25 | **72.00** | 4.05 | 2.99 |
-| `score` | 64.29 | 62.24 | 6.69 | 5.21 |
+| 题型 | **本模型 ACC** | 本模型 ECE（T = 1） | 本模型 ECE（T = 1.108） |
+|---|---:|---:|---:|
+| `noul` | **85.75** | 2.76 | 3.44 |
+| `choice` | **72.00** | 4.05 | 2.99 |
+| `score` | 62.24 | 6.69 | 5.21 |
 
 > ACC 与 ECE 单位为 %，仅在硬标签样本上计算；NLL 覆盖全部样本（含软标签）。验证集 ECE 使用 10 个等宽分箱（下文 CJ-Bench 使用官方的 15 个）。完整指标（含 Brier 与分来源明细）见 `validation_report.json`。
 
-- 与训练中途的 step 5000 相比，四个领域的准确率均有提升，整体准确率提高 1.09 个百分点，验证集分布 NLL 从 0.676 降到 0.602；`score` 题型准确率下降 2.05 个百分点。
+- 相对 Qwen3.5-0.8B 零样本，整体准确率从 34.56% 提升到 **73.41%**。训练过程中各 checkpoint 的结果见 [训练过程 checkpoint 评测](TRAINING_HISTORY.md)。
 - 温度校准使整体 ECE 从 2.53% 降到 1.62%。温度是全局单一标量，通用和医疗领域的 ECE 在校准后略有上升；每个领域只有 300 条样本，分领域 ECE 的波动较大。
 
 ### CJ-Bench 测试集
@@ -366,7 +367,7 @@ B: {key₂} — {描述₂}
 - **通用领域**：准确率与 ECE 均为表中最优，准确率比 Jev 高 **3.91** 个百分点，比 Chinese-Jev General 高 **3.06** 个百分点。
 - **专业领域**：医疗、法律、金融的准确率均超过 Chinese-Jev 的领域专用模型（分别高 **1.20、7.74、9.28** 个百分点），平均 76.90%，与闭源 Jev（77.01%）基本持平。医疗 **88.85%** 为表中最高；法律比 Jev 低 0.51 个百分点，金融低 4.39。
 - **校准**：通用 ECE **1.68%**、专业领域平均 ECE **2.54%**，均为表中最低。
-- 同系列更大的 [chinese-decision-2b](MODEL_CARD_2B.md) 通用 73.96%、专业平均 78.25%。
+- 同系列更大的 [chinese-decision-2b](MODEL_CARD_2B.md) 通用 73.96%、专业平均 78.25%；[chinese-decision-4b](MODEL_CARD_4B.md) 通用 75.69%、专业平均 84.00%。
 
 **分领域与分题型**
 
@@ -385,7 +386,7 @@ B: {key₂} — {描述₂}
 | `choice` | 134,577 | 78.32 | **0.58** | 0.587 | — | 1.48 |
 | `score` | 38,746 | 56.45 | **1.67** | 0.984 | 0.584 | 2.35 |
 
-> “T = 1 时 ECE”一列是合并前的 step 10000 checkpoint 直接 softmax 的结果，用于说明温度校准的作用；加粗为校准后改善的 ECE。医疗样本占测试集的 65%，整体 micro 指标主要反映医疗领域，跨领域比较建议看 macro 平均。
+> “T = 1 时 ECE”一列是合并前的最终 checkpoint 直接 softmax 的结果，用于说明温度校准的作用；加粗为校准后改善的 ECE。医疗样本占测试集的 65%，整体 micro 指标主要反映医疗领域，跨领域比较建议看 macro 平均。
 
 - **准确率**：温度不改变每道题的最高概率选项。整体准确率 83.105%，与合并前 checkpoint 的 83.109% 相差不到 0.01 个百分点，差异来自 LoRA 合并的数值误差。
 - **整体校准**：相对 T = 1，整体 ECE 从 1.07% 降到 **0.27%**，三种题型的 ECE 全部下降；通用（3.03% → **1.68%**）和法律（5.70% → **4.05%**）改善明显。

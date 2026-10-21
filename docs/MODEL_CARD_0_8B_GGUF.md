@@ -40,11 +40,11 @@ tasks:
 
 ## 模型系列与结果范围
 
-本文保留 **0.8B** 已发布版本的使用方法和既有评测。本次文档更新没有重新运行 0.8B；新增 2B 及其 Q8_0 是独立权重与报告，不能混用其温度或测试数字。
+本文介绍 **0.8B** Q8_0 版本的使用方法和评测结果。2B、4B 及其 Q8_0 是独立的权重与报告，不能混用其温度或测试数字。
 
-[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md)
+[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md) · [4B BF16](MODEL_CARD_4B.md) · [4B Q8_0](MODEL_CARD_4B_GGUF.md)
 
-[各尺寸、部署格式与外部模型对比](MODELS.md)。2B BF16 与 2B Q8_0 均已公开发布并完成 CJ-Bench 全量评测：2B 整体准确率更高，0.8B 更小更快，部分法律判断与金融评分任务仍是 0.8B 更好。
+[各尺寸、部署格式与外部模型对比](MODELS.md)。三个尺寸均已公开发布并完成 CJ-Bench 全量评测：4B 准确率最高，2B 居中，0.8B 最小最快、整体 ECE 最低。
 
 ## 相关资源
 
@@ -54,6 +54,7 @@ tasks:
 | 测试平台 | Decision Studio：决策实验台、场景库、鲁棒性实验室、评测中心与性能压测 | [GitHub](https://github.com/yanqiangmiffy/chinese-decision-studio) |
 | 模型（BF16） | 合并后的权重与校准温度，transformers 推理 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b) |
 | 模型（GGUF Q8_0，本仓库） | llama.cpp 推理，CPU 即可部署，不需要 PyTorch | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf) |
+| 4B 系列 | 系列中准确率最高的 4B 版本（CE + RLCD）；BF16 与 GGUF Q8_0 | BF16：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)；GGUF：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf) |
 | 2B 系列 | 更大的 2B 版本（CE + RLCD），整体准确率更高；BF16 与 GGUF Q8_0 | BF16：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b)；GGUF：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) |
 
 ## 简介

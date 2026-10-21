@@ -207,4 +207,4 @@ CUDA_VISIBLE_DEVICES=3 OMP_NUM_THREADS=6 TOKENIZERS_PARALLELISM=false \
 
 同一 step4994 BF16 合并模型直接转换的 2.01 GB Q8_0 已完成 CJ-Bench 全部 307,900 条测试：ACC **84.1094%**、ECE **0.6534%**、NLL **0.416288**、Brier **0.213189**、Score MAE **0.563738**。沿用原温度，未重新训练或拟合。相对同温度 BF16 净少对 4 条，首选项一致率 99.00%；NLL / Brier / Score MAE 略好，整体 ECE 略升。全量对照在 llama.cpp CUDA 上完成并通过指纹复核，CPU 只做了真实 HTTP、15 条诊断输入和服务器 25 条输入检查。完整报告见本机 reports/gguf-2b-20261017/analysis.md。
 
-统一入口见 [模型总览](MODELS.md)、[2B BF16 模型卡](MODEL_CARD_2B.md)、[2B Q8_0 模型卡](MODEL_CARD_2B_GGUF.md) 和 [2B CPU 部署](CPU_2B.md)；各阶段 checkpoint 的对外汇总见 [README](../README.md#2b-训练阶段历史)。0.8B 保留原发布与历史成绩，本次没有重新运行。
+统一入口见 [模型总览](MODELS.md)、[2B BF16 模型卡](MODEL_CARD_2B.md)、[2B Q8_0 模型卡](MODEL_CARD_2B_GGUF.md) 和 [2B CPU 部署](CPU_2B.md)；各阶段 checkpoint 的对外汇总见 [训练过程 checkpoint 评测](TRAINING_HISTORY.md)。

@@ -31,7 +31,7 @@ tasks:
 
 [代码](https://github.com/yanqiangmiffy/chinese-decision) · [模型总览](MODELS.md) · [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) · [训练数据](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) · [测试集](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
 
-[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md)
+[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md) · [4B BF16](MODEL_CARD_4B.md) · [4B Q8_0](MODEL_CARD_4B_GGUF.md)
 
 ## 相关资源
 
@@ -41,6 +41,7 @@ tasks:
 | 测试平台 | Decision Studio：决策实验台、场景库、鲁棒性实验室、评测中心与性能压测 | [GitHub](https://github.com/yanqiangmiffy/chinese-decision-studio) |
 | 2B BF16 | 合并权重与校准温度，Transformers 推理；本仓库由它直接转换 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b) |
 | 2B GGUF Q8_0（本仓库） | llama.cpp 推理，CPU 即可部署，不需要 PyTorch | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) |
+| 4B GGUF Q8_0 | 4.48 GB，系列中准确率最高 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf) |
 | 0.8B GGUF Q8_0 | 0.812 GB，更小更快 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf) |
 
 ## 简介
@@ -55,7 +56,7 @@ tasks:
 
 ## 交付状态与模型信息
 
-2026-10-17 完成量化、文件校验、CPU / HTTP 检查与 CJ-Bench 全量对照，并在 Hugging Face 与 ModelScope 公开发布。本次转换、CPU 检查及新评测只运行 2B；0.8B 仅引用既有报告。
+2026-10-17 完成量化、文件校验、CPU / HTTP 检查与 CJ-Bench 全量对照，并在 Hugging Face 与 ModelScope 公开发布。
 
 | 项目 | 值 |
 |---|---|
@@ -215,7 +216,7 @@ Q8_0 保留了整体表现：micro ACC 从 84.1107% 到 84.1094%，净少答对 
 
 通用准确率下降 0.0433 个百分点，医疗增加 0.0050，法律增加 0.6512，金融不变。法律 ECE 改善 0.4497 个百分点，金融改善 0.6612；通用和医疗 ECE 略升。总体 score ACC 从 57.6651% 到 57.5838%，尽管整体评分 MAE 略好，金融 score 的 MAE 却从 0.402933 升到 0.404192。
 
-商品分类 mep3m_product_catalog 的 3,151 条准确率保持 70.9616%，NLL 从 1.512522 到 1.508412，没有再次出现训练 step3000 的崩落。USTS 来源共有 3,200 条，但只有 122 条硬标签：ACC 61.4754%→57.3770%（少对 5 条），ECE 10.8889%→13.4536%；不能把这个变化当成对全部 3,200 条硬分类的统计。法律 noul 的准确率 82.0667%→82.7333%，但其 ECE 2.6117%→3.2733%，也不能用领域总体 ECE 代替题型结论。
+商品分类 mep3m_product_catalog 的 3,151 条准确率保持 70.9616%，NLL 从 1.512522 到 1.508412，与 BF16 一致。USTS 来源共有 3,200 条，但只有 122 条硬标签：ACC 61.4754%→57.3770%（少对 5 条），ECE 10.8889%→13.4536%；不能把这个变化当成对全部 3,200 条硬分类的统计。法律 noul 的准确率 82.0667%→82.7333%，但其 ECE 2.6117%→3.2733%，也不能用领域总体 ECE 代替题型结论。
 
 原始全量报告、逐条对比汇总、最大概率差样例与完成条件核对存于 reports/gguf-2b-20261017：server/q8-full/full.json、comparison.json、summary.json、completion_verification.json、analysis.md；逐条预测（full_predictions.jsonl.gz）与服务器同步在 runs/cj-bench/gguf-2b-q8-20261017/q8-full，复查不需要重新运行模型。0.8B Q8_0 的同口径结果（一致率 98.92%）见 [0.8B GGUF 模型卡](MODEL_CARD_0_8B_GGUF.md)，两者对照见 [模型总览](MODELS.md#q8_0-量化与-cpu)。
 
@@ -239,7 +240,7 @@ CJ-Bench 全量为 **307,900 条**（304,822 条硬标签、3,078 条软标签�
 
 固定任务 runs/cj-bench/gguf-2b-q8-20261017；对照为 runs/cj-bench/qwen35-2b-rlcd-merged-calibrated-20261017-175001。全量质量评测在 llama.cpp CUDA 上执行，CPU 只完成实际接口、诊断输入与 25 条测试输入的后端对照，不能表述为 CPU 全量测试。
 
-0.8B 与其他模型的完整成绩和论文来源见 [模型总览](MODELS.md)。0.8B Q8_0 已有独立全量结果，不能据此推断 2B 量化结果。
+0.8B、4B 与其他模型的完整成绩和论文来源见 [模型总览](MODELS.md)。各尺寸的 Q8_0 都有独立的全量结果，不能互相推断。
 
 ## 推理效率
 
@@ -275,7 +276,7 @@ Intel Core i7-9700，8 核/8 线程，32 GB RAM；CPU 8 线程，运行容量 16
 
 转换器 SHA256 为 e9a1da876330bbce9687541ab31736542a01b4ac43c6686126514a50f122fb7f，参数 --outtype q8_0 --no-mtp，源模型未改写。BF16 GGUF SHA256 为 9c930f5274f4dcd88ddbd8efd360d567df1c3cef796813ec37650ee5df5539e2。转换的可选 Git 版本记录曾因源码包的失效 Git 指针报错；校验两份 GGUF 和源权重后已补齐元数据，conversion_recovery.json 为 passed，未重新转换权重。
 
-- 继承源 2B 的法律判断、金融评分及商品分类波动；候选顺序保持一致。
+- 继承源 2B 的法律判断、金融评分与商品分类短板；候选顺序保持一致。
 - Qwen3.5 含循环状态，每道独立题必须清空状态，不能跨题复用前缀缓存。
 - 更低比特格式未在本次交付中提供，不能套用 Q8_0 检查结论。
 - 固定 logits 的温度不改变 argmax，量化及后端则可能改变；量化后没有重新拟合温度。

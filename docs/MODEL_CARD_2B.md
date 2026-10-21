@@ -29,7 +29,7 @@ tasks:
 
 [代码](https://github.com/yanqiangmiffy/chinese-decision) · [模型总览](MODELS.md) · [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) · [训练数据](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) · [测试集](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
 
-[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md)
+[0.8B BF16](MODEL_CARD_0_8B.md) · [0.8B Q8_0](MODEL_CARD_0_8B_GGUF.md) · [2B BF16](MODEL_CARD_2B.md) · [2B Q8_0](MODEL_CARD_2B_GGUF.md) · [4B BF16](MODEL_CARD_4B.md) · [4B Q8_0](MODEL_CARD_4B_GGUF.md)
 
 ## 相关资源
 
@@ -39,6 +39,7 @@ tasks:
 | 测试平台 | Decision Studio：决策实验台、场景库、鲁棒性实验室、评测中心与性能压测 | [GitHub](https://github.com/yanqiangmiffy/chinese-decision-studio) |
 | 2B BF16（本仓库） | 合并权重与校准温度，Transformers 推理 | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b) |
 | 2B GGUF Q8_0 | llama.cpp 推理，CPU 即可部署，不需要 PyTorch | [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) |
+| 4B 系列 | 系列中准确率最高；权重约为本模型的 2.2 倍 | [BF16](https://huggingface.co/quincyqiang/chinese-decision-4b) · [GGUF](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) |
 | 0.8B 系列 | 更小、更快；部分法律判断与金融评分任务更好 | [BF16](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [GGUF](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) |
 
 ## 简介
@@ -48,7 +49,7 @@ tasks:
 - **一次前向，零输出 token**：读取最后位置上候选字母 `A`–`Z` 的 logits，softmax 后即为概率。
 - **三种题型**：`noul`（是/否）、`choice`（单选）、`score`（有序等级，返回期望分值）。
 - **单一模型覆盖四个领域**：通用、医疗、法律、金融混合训练。
-- **系列中准确率最高**：CJ-Bench 全量整体 ACC **84.11%**，医疗 / 法律 / 金融平均 **78.25%**，比 chinese-decision-0.8b 分别高 **1.01 / 1.35** 个百分点。
+- **准确率与成本折中**：CJ-Bench 全量整体 ACC **84.11%**，医疗 / 法律 / 金融平均 **78.25%**，比 chinese-decision-0.8b 分别高 **1.01 / 1.35** 个百分点；更大的 [chinese-decision-4b](MODEL_CARD_4B.md) 为 85.97% / 84.00%，权重约为本模型的 2.2 倍。
 - **概率经过校准**：附带在独立校准划分上拟合的温度，整体 ECE **0.64%**。
 
 ## 模型与交付状态
@@ -212,7 +213,7 @@ CJ-Bench 全量为 **307,900 条**（304,822 条硬标签、3,078 条软标签�
 | chinese-decision-2b | BF16 | **84.1107** | **77.1750** | 0.6361 | **0.416520** | **0.213295** | **0.564216** |
 | chinese-decision-2b-gguf | Q8_0 | **84.1094** | **77.3282** | 0.6534 | **0.416288** | **0.213189** | **0.563738** |
 
-相对 chinese-decision-0.8b，本模型 Micro **+1.01**、Macro **+1.44**、专业平均 **+1.35** 个百分点，NLL / Brier / Score MAE 均更低；整体 ECE 略高（0.64% vs 0.27%）。训练阶段表中的 checkpoint 为合并前、T = 1 的结果，与发布权重相差在合并的数值误差范围内（同批次验证集审计为 14/1200 条 argmax 变化）。
+相对 chinese-decision-0.8b，本模型 Micro **+1.01**、Macro **+1.44**、专业平均 **+1.35** 个百分点，NLL / Brier / Score MAE 均更低；整体 ECE 略高（0.64% vs 0.27%）。同口径下 chinese-decision-4b 为 Micro 85.97%、Macro 81.92%，见 [4B 模型卡](MODEL_CARD_4B.md)。
 
 ### 分领域与分题型
 
@@ -228,21 +229,6 @@ CJ-Bench 全量为 **307,900 条**（304,822 条硬标签、3,078 条软标签�
 | `noul` | 134,577 | 94.96 | **95.11** | 0.34 | 0.114612 | — |
 | `choice` | 134,577 | 78.32 | **80.12** | 0.90 | 0.559377 | — |
 | `score` | 38,746 | 56.45 | **57.67** | 1.65 | 0.968959 | 0.564216 |
-
-### 训练阶段
-
-每 1000 步按验证集分布 NLL 选出的 checkpoint，均在全量 307,900 条上评测（合并前，T = 1，即不做温度校准）。进度按实际已训练样本计算；最后一行为发布权重。
-
-| Checkpoint | 训练进度 | General ACC (%) | Medical ACC (%) | Legal ACC (%) | Finance ACC (%) | Professional avg. ACC (%) | ECE (%) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| step 1000 | 20.08% | 70.55 | 87.69 | 55.67 | 66.94 | 70.10 | 2.03 |
-| step 2000 | 40.13% | 72.56 | 88.54 | 62.67 | 71.44 | 74.22 | 1.27 |
-| step 3000 | 60.11% | 71.87 | 88.99 | 65.56 | 74.31 | 76.28 | 1.63 |
-| step 4000 | 80.18% | 73.77 | 89.42 | 68.40 | 76.03 | 77.95 | 0.85 |
-| **step 4994（最终）** | 100.00% | 73.95 | 89.50 | 69.05 | 76.03 | 78.19 | 1.49 |
-| *chinese-decision-2b（发布权重）* | — | 73.96 | 89.50 | 68.74 | 76.50 | 78.25 | 0.64 |
-
-法律、金融提升最多（**+13.37 / +9.08** 个百分点）。step3000 通用领域的回落来自商品分类来源的暂时崩落，step4000 恢复；后段准确率趋于平台。完整诊断见 [训练交付记录](TRAINING_2B.md)。
 
 ### 与其他决策模型对比
 
@@ -277,7 +263,7 @@ CJ-Bench 全量为 **307,900 条**（304,822 条硬标签、3,078 条软标签�
 
 本模型相对 Chinese-Jev（General + 三个 Specialist）在通用 / 医疗 / 法律 / 金融分别高 **4.76 / 1.85 / 8.64 / 11.78** 个百分点，专业平均高 **7.43**；相对闭源 Jev，专业平均高 **1.24**，金融仍低 1.89。四个领域的 ECE 都低于论文中的所有模型。Chinese-Jev General 加上医疗、法律和金融 Specialist 是 **四个分别模型**；本项目每个尺寸各使用一个模型覆盖四领域。Jev 为闭源 API。论文使用 H200，本地使用 A800；延迟口径和硬件不同，不做等价排名。
 
-2B 与 0.8B 的模型规模、batch 和训练目标同时变化，因此结果不能当作 RLCD 的独立收益。两者 best 已见样本分别为 13,048,000 与 12,879,232，应按样本量比较进度。
+2B 与 0.8B 的模型规模、batch 和训练目标同时变化，因此结果不能当作 RLCD 的独立收益。训练过程中各 checkpoint 的评测结果见 [训练过程 checkpoint 评测](TRAINING_HISTORY.md)。
 
 ## Q8_0 版本
 
@@ -303,11 +289,11 @@ CJ-Bench 全量为 **307,900 条**（304,822 条硬标签、3,078 条软标签�
 同服务器、25 条输入、每条预热后测 3 次，Transformers BF16 GPU 的单请求 p50 为 **44.77 ms**；短输入（92–255 tokens）p50 为 **44.68 ms**。这是预先分词后的前向及概率计算，不含分词、HTTP 或网络，且为共享 A800 服务器。完整长度范围为 92–6521 tokens，不能从这些输入推断生产吞吐。
 
 - 2B 的整体准确率更高，但法律判断与金融评分仍落后于 0.8B：法律 noul 为 82.07%（chinese-decision-0.8b 为 85.60%），金融 score 为 80.33%（0.8B 为 82.83%）；Q8_0 为 82.73% 和 80.58%。
-- 商品分类来源 3,151 条在训练中波动：step3000 严重退化，step4000 恢复，发布权重 ACC 为 70.96%、NLL 1.5125（合并前 checkpoint 在 T = 1 时为 70.99%、1.6029）。整体指标不能代替来源诊断。
+- 商品分类来源 3,151 条在训练过程中波动较大，发布权重 ACC 为 70.96%、NLL 1.5125。整体指标不能代替来源诊断。
 - 温度校准降低了整体 ECE，但 Score MAE 比 T = 1 时略高（0.5642 vs 0.5607）；金融领域仍低于闭源 Jev 的作者报告准确率。
 - 不用于聊天或开放式生成；仅针对中文固定候选任务训练。标签含义来自原任务，不能代替专业正确性判断。阈值与人工复核区间需用实际业务数据验证。
 
-原始报告：reports/cj-bench-2b-step4994-20261017 与 reports/cj-bench-2b-step4994-calibrated-20261017。数据 manifest SHA256 为 461bb692676e8c01bbc89a5478a6cda9e5d0096afd2c82919d73f45a018ea351。更多训练进度和来源诊断见 [训练交付记录](TRAINING_2B.md)。
+原始报告：reports/cj-bench-2b-step4994-calibrated-20261017。数据 manifest SHA256 为 461bb692676e8c01bbc89a5478a6cda9e5d0096afd2c82919d73f45a018ea351。训练配置、导出与来源诊断见 [2B 训练与交付记录](TRAINING_2B.md)，各 checkpoint 结果见 [训练过程 checkpoint 评测](TRAINING_HISTORY.md)。
 
 ## 归属、许可与引用
 

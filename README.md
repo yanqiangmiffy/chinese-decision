@@ -4,13 +4,13 @@
 
 **中文概率决策模型：一次前向，直接输出候选项概率**
 
-[![Base Models](https://img.shields.io/badge/Base-Qwen3.5%200.8B%20%7C%202B-blue)](docs/MODELS.md)
+[![Base Models](https://img.shields.io/badge/Base-Qwen3.5%200.8B%20%7C%202B%20%7C%204B-blue)](docs/MODELS.md)
 [![Dataset](https://img.shields.io/badge/Data-CJ--Dataset-orange)](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset)
 [![Benchmark](https://img.shields.io/badge/Bench-CJ--Bench-green)](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
 [![Method](https://img.shields.io/badge/Method-hmm-lightgrey)](https://github.com/n4ze3m/hmm)
-[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-chinese--decision--0.8b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-0.8b)
-[![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--0.8b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)
-[![GGUF](https://img.shields.io/badge/GGUF-Q8__0%20%C2%B7%20CPU-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-chinese--decision--4b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-4b)
+[![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--4b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)
+[![GGUF](https://img.shields.io/badge/GGUF-Q8__0%20%C2%B7%20CPU-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf)
 [![Decision Studio](https://img.shields.io/badge/Platform-Decision%20Studio-black?logo=github)](https://github.com/yanqiangmiffy/chinese-decision-studio)
 
 中文 | [English](README_EN.md)
@@ -25,26 +25,26 @@
 
 很多 AI 调用本质上是在有限选项中做判断——意图识别、工单分流、内容审核、数据打标、给模型输出打分、智能体的下一步动作选择等。用生成式大模型回答这类问题又慢又贵，且输出需要再解析。决策模型直接返回结构化的概率分布，程序拿到即可按阈值使用。
 
-本项目提供 [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) 与 [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) 两个尺寸，在 1,300 万条中文决策数据 [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) 上进行 LoRA 微调，方法改编自 [n4ze3m/hmm](https://github.com/n4ze3m/hmm)，并在 [Chinese-Jev](https://arxiv.org/abs/2609.36965) 提出的 CJ-Bench 上与其论文结果对比。
+本项目提供 [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)、[Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) 与 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) 三个尺寸，在 1,300 万条中文决策数据 [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) 上进行 LoRA 微调，方法改编自 [n4ze3m/hmm](https://github.com/n4ze3m/hmm)，并在 [Chinese-Jev](https://arxiv.org/abs/2609.36965) 提出的 CJ-Bench 上与其论文结果对比。
 
 **主要特点**
 
 - ⚡ **一次前向，零输出 token**：读取最后位置上候选字母 `A`–`Z` 的 logits，softmax 后即为概率；不做自回归生成，也没有思维链。
 - 🧩 **三种题型**：`noul`（是/否）、`choice`（单选）、`score`（有序等级，返回期望分值）。
 - 🔢 **类别数不止 26 个**：单题每个候选对应一个字母（A–Z，训练数据覆盖 2–16 个）；类别更多的 `choice` 问题用 [`/v1/tournament`](#http-服务) 分组淘汰后决赛，每组仍在训练覆盖范围内，不需要重新训练。
-- 🏆 **两种尺寸，单模型覆盖四个领域**：chinese-decision-2b 在 CJ-Bench 全量上整体 ACC **84.11%**，医疗 / 法律 / 金融平均 **78.25%**，高于论文报告的 Chinese-Jev（70.82%）和闭源 Jev（77.01%）；chinese-decision-0.8b 为 **83.11% / 76.90%**。法律判断与金融评分等部分任务仍是 0.8B 更好。
-- 📏 **概率经过校准**：发布权重附带验证集拟合的温度，整体 ECE 2B 为 **0.64%**、0.8B 为 **0.27%**，四个领域的 ECE 都低于论文中的模型。
-- 🪶 **GPU / CPU 部署**：两个尺寸均提供 BF16 与 Q8_0 GGUF。chinese-decision-2b-gguf 只有 **2.01 GB**（比 BF16 小约 46.5%），CJ-Bench 全量 ACC **84.11%**，与 BF16 版的首选项一致率 **99.00%**；CPU 上用 llama.cpp 运行，不需要 PyTorch。
+- 🏆 **三种尺寸，单模型覆盖四个领域**：chinese-decision-4b 在 CJ-Bench 全量上整体 ACC **85.97%**，医疗 / 法律 / 金融平均 **84.00%**，四个领域的准确率均高于论文报告的 Chinese-Jev（专业平均 70.82%）和闭源 Jev（77.01%）；chinese-decision-2b 为 **84.11% / 78.25%**，chinese-decision-0.8b 为 **83.11% / 76.90%**。
+- 📏 **概率经过校准**：发布权重附带验证集拟合的温度，整体 ECE 4B 为 **1.00%**、2B 为 **0.64%**、0.8B 为 **0.27%**，三个尺寸四个领域的 ECE 都低于论文中的模型。
+- 🪶 **GPU / CPU 部署**：三个尺寸均提供 BF16 与 Q8_0 GGUF。chinese-decision-4b-gguf 为 **4.48 GB**（比 BF16 小约 46.7%），CJ-Bench 全量 ACC **85.99%**，与 BF16 版的首选项一致率 **99.19%**；CPU 上用 llama.cpp 运行，不需要 PyTorch。
 - 🔌 **兼容 hmm / System One 接口**：提供开箱即用的 HTTP 服务。
 
 ## 最新动态
 
+- 🚀 **2026-10-21**：发布 **chinese-decision-4b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)）与 CPU 版 **chinese-decision-4b-gguf**（Q8_0，4.48 GB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf)）。4B 整体 ACC **85.97%**、专业平均 **84.00%**、ECE **1.00%**，4 个领域 × 3 种题型的 12 个组合全部高于 0.8B 与 2B；Q8_0 全量 ACC **85.99%**，与 BF16 首选项一致率 **99.19%**。各尺寸训练过程中的 checkpoint 评测统一整理到 [训练过程 checkpoint 评测](docs/TRAINING_HISTORY.md)。
 - 🔢 **2026-10-18**：新增分组淘汰接口 [`/v1/tournament`](#http-服务)，`choice` 问题的类别数不再受 A–Z 26 个字母限制（服务端默认上限 1024，由 `decision/tournament.py` 的 `MAX_CANDIDATES` 设定）。候选先随机分成每组不超过 16 个，各组前几名晋级决赛，不需要重新训练；GPU 与 CPU 服务都已支持。示例 [examples/tournament.json](examples/tournament.json) 有 41 个客服意图，在 GPU 服务上换用 10 条留言全部选对，每题 4 次前向、约 150 ms。
 - 🚀 **2026-10-17**：发布 **chinese-decision-2b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b)）与 CPU 版 **chinese-decision-2b-gguf**（Q8_0，2.01 GB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf)）。2B 整体 ACC **84.11%**、专业平均 **78.25%**、ECE **0.64%**；Q8_0 全量 ACC **84.11%**，与 BF16 首选项一致率 **99.00%**，CPU 检查见 [2B CPU 部署](docs/CPU_2B.md)。
-- 📊 **2026-10-17**：Qwen3.5-2B + LoRA + RLCD 完成训练（13,048,000 条决策，best step 4994），五个阶段的 checkpoint 均完成 CJ-Bench 全量评测，见 [2B 训练阶段历史](#2b-训练阶段历史) 与 [2B 训练与交付记录](docs/TRAINING_2B.md)。
+- 📊 **2026-10-17**：Qwen3.5-2B + LoRA + RLCD 完成 1 epoch 训练（13,048,000 条决策），训练配置、导出与来源诊断见 [2B 训练与交付记录](docs/TRAINING_2B.md)。
 - 🧪 **2026-10-15**：开源决策模型测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)：决策实验台、8 个应用场景、鲁棒性实验室、评测中心和性能压测，`docker compose up` 一条命令启动；可以直接接 GPU 服务（`scripts/serve_gpu.py`），也可以接 CPU 上的 GGUF 服务（`scripts/serve.py`）。
-- 🎉 **2026-10-15**：发布 **chinese-decision-0.8b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)）与 **chinese-decision-0.8b-gguf**（Q8_0，812 MB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf)）。完整训练 1 epoch（13,048,000 条决策，10,132 步），验证集最优的 step 10000 在 CJ-Bench 通用领域准确率 **72.24%**、专业领域平均 **76.98%**；合并后在验证集的独立划分上拟合温度 T = 1.108。
-- 📈 **2026-10-14**：完成 step 5000 checkpoint 在 CJ-Bench 全量测试集（307,900 条）上的评测，并与 Chinese-Jev 论文的 Table 1、Table 2 对比。
+- 🎉 **2026-10-15**：发布 **chinese-decision-0.8b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)）与 **chinese-decision-0.8b-gguf**（Q8_0，812 MB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf)）。完整训练 1 epoch（13,048,000 条决策），CJ-Bench 通用领域准确率 **72.26%**、专业领域平均 **76.90%**；合并后在验证集的独立划分上拟合温度 T = 1.108。
 
 ## 模型
 
@@ -54,16 +54,18 @@
 | Chinese Decision 0.8B Q8_0 | 同一 0.8B 合并权重 | GGUF / 0.812 GB | 1.108133 | [HF](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf) | [0.8B GGUF](docs/MODEL_CARD_0_8B_GGUF.md) |
 | Chinese Decision 2B | Qwen3.5-2B / CE + RLCD | BF16 / 3.76 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b) | [2B](docs/MODEL_CARD_2B.md) |
 | Chinese Decision 2B Q8_0 | 同一 2B 合并权重 | GGUF / 2.01 GB | 1.074872 | [HF](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf) | [2B GGUF](docs/MODEL_CARD_2B_GGUF.md) |
+| Chinese Decision 4B | Qwen3.5-4B / CE + RLCD | BF16 / 8.41 GB | 1.024758 | [HF](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b) | [4B](docs/MODEL_CARD_4B.md) |
+| Chinese Decision 4B Q8_0 | 同一 4B 合并权重 | GGUF / 4.48 GB | 1.024758 | [HF](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf) | [4B GGUF](docs/MODEL_CARD_4B_GGUF.md) |
 
-四个版本都已在 CJ-Bench 全量 307,900 条上完成评测（成绩见[评测结果](#评测结果)），全部支持 16384 tokens；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多时用 [`/v1/tournament`](#http-服务) 分组淘汰；大小为十进制 GB，不是运行内存。
+六个版本都已在 CJ-Bench 全量 307,900 条上完成评测（成绩见[评测结果](#评测结果)），全部支持 16384 tokens；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多时用 [`/v1/tournament`](#http-服务) 分组淘汰；大小为十进制 GB，不是运行内存。
 
-**怎么选**：GPU 上优先 2B BF16（准确率最高）；CPU 或内存受限时用 Q8_0 GGUF，不需要 PyTorch；对延迟和资源最敏感、或主要处理法律判断 / 金融评分类任务时，0.8B 仍有优势。完整选型、分领域和外部基线见 [模型总览](docs/MODELS.md)。
+**怎么选**：GPU 上追求准确率用 4B BF16；需要兼顾延迟与显存时用 2B BF16；CPU 或内存受限时用 Q8_0 GGUF，不需要 PyTorch；对延迟和资源最敏感、或需要最低整体 ECE 时用 0.8B。完整选型、分领域和外部基线见 [模型总览](docs/MODELS.md)。
 
 代码：[本仓库](https://github.com/yanqiangmiffy/chinese-decision)。测试平台：[Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)。
 
 ## 应用案例
 
-以下截图来自我们的测试平台 Decision Studio，后端运行 0.8B 的最终 step 10000 模型。这些场景采用同一种设计：**业务规则写在代码里，决策模型只负责给出概率**。
+以下截图来自我们的测试平台 Decision Studio，后端运行 chinese-decision-0.8b。这些场景采用同一种设计：**业务规则写在代码里，决策模型只负责给出概率**。
 
 ### 工单分诊台：一次请求，六个判断
 
@@ -94,7 +96,7 @@
 ```mermaid
 flowchart LR
     A["上下文 + 问题 + 候选项"] --> B["提示编译器<br/>hmm-zh-v1"]
-    B --> C["Qwen3.5 0.8B / 2B<br/>LoRA 微调后合并"]
+    B --> C["Qwen3.5 0.8B / 2B / 4B<br/>LoRA 微调后合并"]
     C --> D["末位 logits<br/>A … Z"]
     D --> E["屏蔽多余字母<br/>softmax(z / T)"]
     E --> F["noul / choice / score"]
@@ -130,13 +132,13 @@ B: {key₂} — {描述₂}
 
 ## 评测结果
 
-下文的 **chinese-decision-0.8b**、**chinese-decision-2b** 及其 `-gguf` 版本均指已发布的正式权重：训练得到的 LoRA 已合并进基础模型，概率使用 `decision_config.json` 中的默认温度。
+下文的 **chinese-decision-0.8b**、**chinese-decision-2b**、**chinese-decision-4b** 及其 `-gguf` 版本均指已发布的正式权重：训练得到的 LoRA 已合并进基础模型，概率使用 `decision_config.json` 中的默认温度。
 
-> **关于温度 T**：概率按 p = softmax(z / T) 计算，z 为候选字母的 logits。**T = 1** 表示直接对 logits 做 softmax、不做温度校准。发布权重附带在独立验证划分上拟合的温度（0.8B 为 1.108，2B 为 1.075），它只调整概率的尖锐程度，**不改变选出的答案**：准确率不变，ECE / NLL 更好。训练阶段历史中的 checkpoint 均按 T = 1 评测。
+> **关于温度 T**：概率按 p = softmax(z / T) 计算，z 为候选字母的 logits。**T = 1** 表示直接对 logits 做 softmax、不做温度校准。发布权重附带在独立验证划分上拟合的温度（0.8B 为 1.108，2B 为 1.075，4B 为 1.025），它只调整概率的尖锐程度，**不改变选出的答案**。训练过程中各 checkpoint（合并前，T = 1）的结果见 [训练过程 checkpoint 评测](docs/TRAINING_HISTORY.md)。
 
 ### 主要结果
 
-CJ-Bench 全部 307,900 条（硬标签 304,822、软标签 3,078），无过滤、无截断。ACC / ECE 只计硬标签（ECE 为 15 个等宽分箱），NLL / Brier 包含软标签；Micro 按样本加权，Macro 为四个领域等权平均。**加粗**表示 2B 相对同格式 0.8B 提升的指标。
+CJ-Bench 全部 307,900 条（硬标签 304,822、软标签 3,078），无过滤、无截断。ACC / ECE 只计硬标签（ECE 为 15 个等宽分箱），NLL / Brier 包含软标签；Micro 按样本加权，Macro 为四个领域等权平均。**加粗**表示相对上一尺寸同格式版本提升的指标（2B 对 0.8B，4B 对 2B）。
 
 | 模型 | 格式 | Micro ACC (%) ↑ | Macro ACC (%) ↑ | ECE (%) ↓ | NLL ↓ | Brier ↓ | Score MAE ↓ |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -144,9 +146,12 @@ CJ-Bench 全部 307,900 条（硬标签 304,822、软标签 3,078），无过滤
 | chinese-decision-0.8b-gguf | Q8_0 | 83.12 | 75.81 | 0.27 | 0.4313 | 0.2238 | 0.5840 |
 | chinese-decision-2b | BF16 | **84.11** | **77.18** | 0.64 | **0.4165** | **0.2133** | **0.5642** |
 | chinese-decision-2b-gguf | Q8_0 | **84.11** | **77.33** | 0.65 | **0.4163** | **0.2132** | **0.5637** |
+| chinese-decision-4b | BF16 | **85.97** | **81.92** | 1.00 | **0.3706** | **0.1909** | **0.5253** |
+| chinese-decision-4b-gguf | Q8_0 | **85.99** | **81.95** | 0.96 | **0.3705** | **0.1907** | **0.5253** |
 
+- **4B 准确率最高**：相对 2B，Micro **+1.86**、Macro **+4.75**、专业平均 **+5.76** 个百分点，法律 / 金融分别提升 **8.47 / 7.11**，NLL / Brier / Score MAE 分别下降 **11.0% / 10.5% / 6.9%**；整体 ECE 为 1.00%，高于 2B 的 0.64%。4B 与 2B 的训练数据、训练目标、全局 batch 和学习率相同，差别主要是基础模型规模。
 - **2B 整体更准**：相对 0.8B，Micro **+1.01**、Macro **+1.44**、医法金专业平均 **+1.35** 个百分点，NLL / Brier / Score MAE 分别下降 **3.4% / 4.7% / 3.5%**；整体 ECE 略高（0.64% vs 0.27%），仍处于很低水平。
-- **Q8_0 几乎无损**：与同温度 BF16 逐条配对，0.8B / 2B 的首选项一致率为 **98.92% / 99.00%**，准确率变化 +0.02 / −0.001 个百分点。单条答案仍有少量变化（2B 为 1,105 条对→错、1,101 条错→对）；2B Q8_0 的 Macro 偏高 0.15 主要来自样本较少的法律领域（4,300 条），不代表量化提升了能力。全量在 llama.cpp CUDA 上测得，CPU 只做接口与有限输入检查，详见 [0.8B GGUF](docs/MODEL_CARD_0_8B_GGUF.md) 与 [2B GGUF](docs/MODEL_CARD_2B_GGUF.md) 模型卡。
+- **Q8_0 几乎无损**：与同温度 BF16 逐条配对，0.8B / 2B / 4B 的首选项一致率为 **98.92% / 99.00% / 99.19%**，准确率变化 +0.02 / −0.001 / +0.02 个百分点。单条答案仍有少量变化（2B 为 1,105 条对→错、1,101 条错→对）；2B Q8_0 的 Macro 偏高 0.15 主要来自样本较少的法律领域（4,300 条），不代表量化提升了能力。全量在 llama.cpp CUDA 上测得，CPU 只做接口与有限输入检查，详见 [0.8B GGUF](docs/MODEL_CARD_0_8B_GGUF.md)、[2B GGUF](docs/MODEL_CARD_2B_GGUF.md) 与 [4B GGUF](docs/MODEL_CARD_4B_GGUF.md) 模型卡。
 
 ### 与 Chinese-Jev 论文对比
 
@@ -163,7 +168,8 @@ CJ-Bench 全部 307,900 条（硬标签 304,822、软标签 3,078），无过滤
 | Jev (API) | 68.35 | 11.45 |
 | Chinese-Jev General / Specialists | 69.20 | 3.78 |
 | chinese-decision-0.8b | 72.26 | **1.68** |
-| chinese-decision-2b | **73.96** | 1.93 |
+| chinese-decision-2b | 73.96 | 1.93 |
+| chinese-decision-4b | **75.69** | 2.91 |
 
 **专业领域（Table 2）**
 
@@ -173,66 +179,27 @@ CJ-Bench 全部 307,900 条（硬标签 304,822、软标签 3,078），无过滤
 | Open-Jev | 73.08 | 2.88 | 44.07 | 23.15 | 48.11 | 10.19 | 55.09 | 12.07 |
 | SemIF | 62.17 | 10.39 | 43.07 | 19.99 | 47.89 | 18.45 | 51.04 | 16.28 |
 | Laya Multilingual | 24.55 | 43.05 | 34.72 | 31.49 | 38.31 | 26.18 | 32.53 | 33.57 |
-| Jev (API) | 84.29 | 5.70 | 68.35 | 8.03 | **78.39** | 2.98 | 77.01 | 5.57 |
+| Jev (API) | 84.29 | 5.70 | 68.35 | 8.03 | 78.39 | 2.98 | 77.01 | 5.57 |
 | Chinese-Jev General | 39.77 | 17.33 | 38.76 | 15.37 | 35.39 | 14.43 | 37.97 | 15.71 |
 | Chinese-Jev General / Specialists | 87.65 | 7.25 | 60.10 | 17.45 | 64.72 | 11.55 | 70.82 | 12.08 |
 | chinese-decision-0.8b | 88.85 | 1.12 | 67.84 | 4.05 | 74.00 | 2.45 | 76.90 | 2.54 |
-| chinese-decision-2b | **89.50** | **0.24** | **68.74** | **3.37** | 76.50 | **2.13** | **78.25** | **1.92** |
+| chinese-decision-2b | 89.50 | **0.24** | 68.74 | 3.37 | 76.50 | 2.13 | 78.25 | 1.92 |
+| chinese-decision-4b | **91.19** | 0.25 | **77.21** | **2.02** | **83.61** | **1.65** | **84.00** | **1.30** |
 
-- chinese-decision-2b 相对 Chinese-Jev（General + 三个 Specialist）在通用 / 医疗 / 法律 / 金融分别高 **4.76 / 1.85 / 8.64 / 11.78** 个百分点，专业平均高 **7.43**；相对闭源 Jev，专业平均高 **1.24**，金融仍低 1.89。
-- 两个尺寸在四个领域的 ECE 都低于论文中的所有模型。
+- chinese-decision-4b 相对 Chinese-Jev（General + 三个 Specialist）在通用 / 医疗 / 法律 / 金融分别高 **6.49 / 3.54 / 17.11 / 18.89** 个百分点，专业平均高 **13.18**；相对闭源 Jev，四个领域都更高，专业平均高 **6.99**，金融高 **5.22**。chinese-decision-2b 的专业平均比 Jev 高 1.24，但金融仍低 1.89。
+- 三个尺寸在四个领域的 ECE 都低于论文中的所有模型。
 - Chinese-Jev General 加三个 Specialist 是四个分别训练的模型，本项目每个尺寸用一个模型覆盖四个领域；Jev 是闭源 API。论文使用 H200 / API，本地为 A800，延迟口径不同，不作等价排名。2B 与 0.8B 的模型规模、batch 和训练目标（2B 加了 RLCD）同时改变，差异不能归因于单一因素。
 
 **与 Chinese-Jev 的方法差异**
 
 | | Chinese-Jev | Chinese Decision（本项目） |
 |---|---|---|
-| 骨干网络 | mmBERT-base 编码器 + 决策 Transformer（约 322M） | Qwen3.5-0.8B / 2B 解码器 + LoRA |
+| 骨干网络 | mmBERT-base 编码器 + 决策 Transformer（约 322M） | Qwen3.5-0.8B / 2B / 4B 解码器 + LoRA |
 | 候选打分 | 在候选标记位置上用共享 MLP 打分 | 读取末位候选字母的 logits |
-| 训练目标 | 交叉熵 + RLCD 策略梯度项 | 0.8B 使用候选分布交叉熵；2B 另加 RLCD（见交付记录） |
+| 训练目标 | 交叉熵 + RLCD 策略梯度项 | 0.8B 使用候选分布交叉熵；2B、4B 另加 RLCD |
 | 训练方式 | 先做通用预训练，再分别微调三个领域专用模型 | 四个领域混合训练，单一模型 |
 
-### 0.8B 训练阶段历史
-
-同一次训练中按验证集分布 NLL 先后选出的四个 best checkpoint，都在 CJ-Bench 全量 307,900 条上以相同口径评测（合并前，T = 1）。倒数第三行是最终发布的正式权重，最后两行引自 Chinese-Jev 论文，供参考。
-
-| Checkpoint | 训练进度 | 验证集 NLL ↓ | 通用 ACC ↑ | 医疗 ACC ↑ | 法律 ACC ↑ | 金融 ACC ↑ | 专业平均 ACC ↑ | 专业平均 ECE ↓ | 整体 ECE ↓ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| step 2000 | 19.82% | 0.739 | 69.04 | 86.78 | 54.07 | 64.17 | 68.34 | 2.73 | 1.63 |
-| step 3000 | 29.71% | 0.691 | 70.26 | 87.22 | 58.93 | 68.67 | 71.61 | 1.75 | 1.25 |
-| step 5000 | 49.41% | 0.676 | 70.90 | 87.89 | 63.37 | 71.17 | 74.14 | 1.49 | 0.84 |
-| **step 10000（最终）** | 98.71% | 0.600 | 72.24 | 88.86 | 67.86 | 74.22 | 76.98 | 2.46 | 1.07 |
-| *chinese-decision-0.8b（发布权重）* | — | — | 72.26 | 88.85 | 67.84 | 74.00 | 76.90 | 2.54 | 0.27 |
-| *参考：Chinese-Jev（G / S）* | — | — | 69.20 | 87.65 | 60.10 | 64.72 | 70.82 | 12.08 | — |
-| *参考：Jev* | — | — | 68.35 | 84.29 | 68.35 | 78.39 | 77.01 | 5.57 | — |
-
-> 进度按日志中的实际训练样本量计算：step2000 / 3000 / 5000 / 10000 为 2,586,624 / 3,876,160 / 6,447,104 / 12,879,232 条，即整轮的 19.82% / 29.71% / 49.41% / 98.71%。独立的 2B 全阶段结果见 [交付记录](docs/TRAINING_2B.md)。
-
-- **四个领域持续提升**：从 step 2000 到 step 10000，法律提升 **13.79** 个百分点，金融提升 **10.06**，通用提升 **3.20**，医疗提升 **2.08**。
-- **从 step 3000 起超过 Chinese-Jev-S**：专业领域平均准确率从 68.34% 提升到 **76.98%**，与 Jev（77.01%）的差距从 8.67 缩小到 **0.03** 个百分点。
-- **校准没有随训练单调改善**：在不做温度校准的情况下，整体 ECE 从 1.63% 降到 step 5000 的 0.84%，最终为 1.07%；专业领域平均 ECE 在 step 5000 最低（1.49%），最终为 2.46%，主要来自法律领域（ECE 从 2.30% 升到 5.70%）；发布权重经温度校准后整体 ECE 为 **0.27%**。
-- 验证集 NLL 持续下降（0.739 → 0.600），与测试集准确率的提升方向一致。
-
-### 2B 训练阶段历史
-
-2B（CE + RLCD）每 1000 步按验证集分布 NLL 选出的 best checkpoint，均在 CJ-Bench 全量 307,900 条上以相同口径评测（合并前，T = 1，无过滤、无截断）。最后一行是最终发布的正式权重。
-
-| Checkpoint | 训练进度 | 验证集 NLL ↓ | 通用 ACC ↑ | 医疗 ACC ↑ | 法律 ACC ↑ | 金融 ACC ↑ | 专业平均 ACC ↑ | 专业平均 ECE ↓ | 整体 ECE ↓ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| step 1000 | 20.08% | 0.694 | 70.55 | 87.69 | 55.67 | 66.94 | 70.10 | 3.71 | 2.03 |
-| step 2000 | 40.13% | 0.630 | 72.56 | 88.54 | 62.67 | 71.44 | 74.22 | 2.28 | 1.27 |
-| step 3000 | 60.11% | 0.603 | 71.87 | 88.99 | 65.56 | 74.31 | 76.28 | 1.63 | 1.63 |
-| step 4000 | 80.18% | 0.592 | 73.77 | 89.42 | 68.40 | 76.03 | 77.95 | 1.74 | 0.85 |
-| **step 4994（最终）** | 100.00% | 0.586 | 73.95 | 89.50 | 69.05 | 76.03 | 78.19 | 2.17 | 1.49 |
-| *chinese-decision-2b（发布权重）* | — | — | 73.96 | 89.50 | 68.74 | 76.50 | 78.25 | 1.92 | 0.64 |
-
-> 进度按实际已训练样本计算：step 1000 / 2000 / 3000 / 4000 / 4994 为 2,619,904 / 5,236,736 / 7,842,752 / 10,461,952 / 13,048,000 条。2B 与 0.8B 的步数不能直接对照（全局 batch 分别约 2048 / 1024），应按样本进度比较。
-
-- **法律、金融提升最多**：从 step 1000 到最终，法律提升 **13.37** 个百分点，金融提升 **9.08**，通用提升 **3.39**，医疗提升 **1.81**。
-- **从 step 2000 起超过 Chinese-Jev（G / S）**，step 4000 起专业平均超过闭源 Jev（77.01%），最终领先 **1.18** 个百分点；金融单项仍低于 Jev。
-- **step 3000 通用领域回落 0.69 个百分点**：主要来自商品分类来源（3,151 条）准确率从 75.06% 崩落到 30.05%，step 4000 恢复，详见 [2B 交付记录](docs/TRAINING_2B.md#来源退化与剩余短板)。
-- **后段进入平台期**：step 4000 → 4994 整体准确率只再提高 0.12 个百分点，未校准整体 ECE 从 0.85% 回升到 1.49%；温度校准后的发布权重为 **0.64%**。
-- 同样约 20% 样本进度下，2B step 1000 的整体准确率比 0.8B step 2000 高 **1.13** 个百分点；模型规模、batch 与 RLCD 同时改变，不能归因于单一因素。
+训练过程中各 checkpoint 的 CJ-Bench 全量结果（0.8B / 2B / 4B）见 [训练过程 checkpoint 评测](docs/TRAINING_HISTORY.md)。
 
 ### 分领域 / 分题型明细
 
@@ -309,9 +276,46 @@ CJ-Bench 全部 307,900 条（硬标签 304,822、软标签 3,078），无过滤
 </details>
 
 <details>
+<summary><b>chinese-decision-4b：CJ-Bench 分领域 / 分题型明细</b></summary>
+
+> 发布权重（T = 1.025），口径同上。**加粗**为相对 chinese-decision-2b 提升的准确率。Q8_0 版本的分领域 / 分题型结果见 [4B GGUF 模型卡](docs/MODEL_CARD_4B_GGUF.md#分领域与分题型)。
+
+**分领域**
+
+| 领域 | 样本数 | ACC ↑ | ECE ↓ | NLL ↓ | Brier ↓ |
+|---|---:|---:|---:|---:|---:|
+| 通用 General | 100,000 | **75.69** | 2.91 | 0.621 | 0.318 |
+| 医疗 Medical | 200,000 | **91.19** | 0.25 | 0.241 | 0.124 |
+| 法律 Legal | 4,300 | **77.21** | 2.02 | 0.529 | 0.304 |
+| 金融 Finance | 3,600 | **83.61** | 1.65 | 0.421 | 0.230 |
+| **整体（micro）** | **307,900** | **85.97** | **1.00** | **0.371** | **0.191** |
+| **四领域等权平均（macro）** | — | **81.92** | — | **0.453** | — |
+
+**分题型**
+
+| 题型 | 样本数 | ACC ↑ | ECE ↓ | NLL ↓ | 期望等级 MAE ↓ |
+|---|---:|---:|---:|---:|---:|
+| `noul` | 134,577 | **95.47** | 0.43 | 0.107 | — |
+| `choice` | 134,577 | **83.25** | 1.26 | 0.475 | — |
+| `score` | 38,746 | **60.43** | 2.18 | 0.922 | 0.525 |
+
+**领域 × 题型准确率（%）**
+
+| 领域 | `noul` | `choice` | `score` |
+|---|---:|---:|---:|
+| 通用 | **88.50** | **78.60** | **58.35** |
+| 医疗 | **98.04** | **85.04** | **67.49** |
+| 法律 | **88.87** | **74.13** | **67.31** |
+| 金融 | **85.67** | **77.00** | **88.17** |
+
+> 12 个领域 × 题型组合全部高于 2B，也全部高于 0.8B；2B 相对 0.8B 下降的法律判断与金融评分，4B 分别为 88.87% 与 88.17%。
+
+</details>
+
+<details>
 <summary><b>0.8B 微调前后对比（验证集）</b></summary>
 
-在官方验证集的分层子集（4 个领域 × 3 种题型，每组 100 条，共 1,200 条）上，对比基础模型零样本与 step 10000 的结果：
+在官方验证集的分层子集（4 个领域 × 3 种题型，每组 100 条，共 1,200 条）上，对比基础模型零样本与微调后最终 checkpoint 的结果：
 
 | 领域 | Qwen3.5-0.8B ACC | **Chinese Decision ACC** | Qwen3.5-0.8B ECE | **Chinese Decision ECE** |
 |---|---:|---:|---:|---:|
@@ -327,14 +331,14 @@ CJ-Bench 全部 307,900 条（硬标签 304,822、软标签 3,078），无过滤
 
 同一组 25 条 CJ-Bench 输入（92–6,521 tokens），发布权重单条请求、预热后各测 3 次：
 
-| 指标（单条请求 p50） | chinese-decision-0.8b | chinese-decision-2b |
-|---|---:|---:|
-| GPU · BF16（Transformers） | 44.4 ms | 44.8 ms |
-| GPU · Q8_0（llama.cpp） | **17.9 ms** | **23.6 ms** |
-| CPU 16 线程 · Q8_0（llama.cpp） | 427.0 ms | 818.0 ms |
-| CPU 进程内存 · Q8_0 / FP32 | **2.19** / 7.44 GiB | **3.34** / 11.74 GiB |
+| 指标（单条请求 p50） | chinese-decision-0.8b | chinese-decision-2b | chinese-decision-4b |
+|---|---:|---:|---:|
+| GPU · BF16（Transformers） | 44.4 ms | 44.8 ms | 60.1 ms |
+| GPU · Q8_0（llama.cpp） | **17.9 ms** | **23.6 ms** | **47.3 ms** |
+| CPU 16 线程 · Q8_0（llama.cpp） | 427.0 ms | 818.0 ms | 2004.0 ms |
+| CPU 进程内存 · Q8_0 / FP32 | **2.19** / 7.44 GiB | **3.34** / 11.74 GiB | 6.14 / — GiB |
 
-> A800 80GB PCIe 与 Xeon Gold 5318Y 共享服务器；只统计已分词输入的前向与概率计算，不含分词、HTTP 和网络。batch = 1 时两个尺寸在 GPU 上都受调度开销限制，BF16 延迟接近；Q8_0 在 GPU 上短输入更快，在 CPU 上的主要优势是内存。长输入、Windows 台式机等完整测量见 [0.8B GGUF](docs/MODEL_CARD_0_8B_GGUF.md#推理效率) 与 [2B GGUF](docs/MODEL_CARD_2B_GGUF.md#推理效率) 模型卡。
+> A800 80GB PCIe 与 Xeon Gold 5318Y 共享服务器；只统计已分词输入的前向与概率计算，不含分词、HTTP 和网络。batch = 1 时两个尺寸在 GPU 上都受调度开销限制，BF16 延迟接近；Q8_0 在 GPU 上短输入更快，在 CPU 上的主要优势是内存。4B 在另一天用同组输入测得，未测 Transformers FP32 CPU 基线。长输入、Windows 台式机等完整测量见 [0.8B GGUF](docs/MODEL_CARD_0_8B_GGUF.md#推理效率)、[2B GGUF](docs/MODEL_CARD_2B_GGUF.md#推理效率) 与 [4B GGUF](docs/MODEL_CARD_4B_GGUF.md#推理效率) 模型卡。
 
 ## 快速开始
 
@@ -350,18 +354,20 @@ pip install -e ".[train]"
 
 ### 准备模型与数据
 
-只想使用模型、不训练的话，直接下载已发布的权重（四个版本的链接见[模型](#模型)）。按需选择一个即可：
+只想使用模型、不训练的话，直接下载已发布的权重（六个版本的链接见[模型](#模型)）。按需选择一个即可：
 
 ```bash
 # GPU：BF16 合并权重
+hf download quincyqiang/chinese-decision-4b --local-dir models/chinese-decision-4b
 hf download quincyqiang/chinese-decision-2b --local-dir models/chinese-decision-2b
 hf download quincyqiang/chinese-decision-0.8b --local-dir models/chinese-decision-0.8b
 # CPU：Q8_0 GGUF，不需要 PyTorch
+hf download quincyqiang/chinese-decision-4b-gguf --local-dir models/chinese-decision-4b-gguf
 hf download quincyqiang/chinese-decision-2b-gguf --local-dir models/chinese-decision-2b-gguf
 hf download quincyqiang/chinese-decision-0.8b-gguf --local-dir models/chinese-decision-0.8b-gguf
 # 国内网络也可以用 ModelScope，仓库名相同，例如
-modelscope download --model quincyqiang/chinese-decision-2b --local_dir models/chinese-decision-2b
-modelscope download --model quincyqiang/chinese-decision-2b-gguf --local_dir models/chinese-decision-2b-gguf
+modelscope download --model quincyqiang/chinese-decision-4b --local_dir models/chinese-decision-4b
+modelscope download --model quincyqiang/chinese-decision-4b-gguf --local_dir models/chinese-decision-4b-gguf
 ```
 
 训练和评测所需的基础模型与数据均从本地目录加载。可以使用 Hugging Face CLI 下载（CJ 数据集目前需要申请访问，下载前先运行 `hf auth login`）：
@@ -369,6 +375,7 @@ modelscope download --model quincyqiang/chinese-decision-2b-gguf --local_dir mod
 ```bash
 hf download Qwen/Qwen3.5-0.8B --local-dir models/Qwen3.5-0.8B
 hf download Qwen/Qwen3.5-2B --local-dir models/Qwen3.5-2B   # 训练 2B 时
+hf download Qwen/Qwen3.5-4B --local-dir models/Qwen3.5-4B   # 训练 4B 时
 ```
 
 ```bash
@@ -379,21 +386,21 @@ hf download bbldCVer-hf/CJ-Dataset --repo-type dataset --local-dir datasets/CJ-D
 hf download bbldCVer-hf/CJ-Bench --repo-type dataset --local-dir datasets/CJ-Bench
 ```
 
-### 启动 2B 服务
+### 启动 4B / 2B 服务
 
-下载好对应模型目录后，在项目根运行。GPU BF16：
+下载好对应模型目录后，在项目根运行（以 4B 为例，换成 2B 时把目录和文件名中的 `4b` 改为 `2b`）。GPU BF16：
 
 ```bash
-python scripts/serve_gpu.py --base models/chinese-decision-2b --host 127.0.0.1 --port 8789 --token-budget 16384 --max-batch 32
+python scripts/serve_gpu.py --base models/chinese-decision-4b --host 127.0.0.1 --port 8789 --token-budget 16384 --max-batch 32
 ```
 
 CPU Q8_0（安装 `[gguf]` 依赖）：
 
 ```bash
-python scripts/serve.py --backend gguf --base models/chinese-decision-2b-gguf --gguf models/chinese-decision-2b-gguf/chinese-decision-2b-Q8_0.gguf --threads 8 --context-size 16384 --host 127.0.0.1 --port 8790
+python scripts/serve.py --backend gguf --base models/chinese-decision-4b-gguf --gguf models/chinese-decision-4b-gguf/chinese-decision-4b-Q8_0.gguf --threads 8 --context-size 16384 --host 127.0.0.1 --port 8790
 ```
 
-两者都读取 `decision_config.json` 中的校准温度，接口与下文 HTTP 服务一致。直接 Python 推理见 [2B BF16 模型卡](docs/MODEL_CARD_2B.md)，CPU 环境见 [2B Q8_0 模型卡](docs/MODEL_CARD_2B_GGUF.md)。下面的 Python 与 HTTP 示例以 0.8B 为例，把路径换成 2B 目录即可。
+两者都读取 `decision_config.json` 中的校准温度，接口与下文 HTTP 服务一致。直接 Python 推理见 [4B BF16 模型卡](docs/MODEL_CARD_4B.md)，CPU 环境见 [4B Q8_0 模型卡](docs/MODEL_CARD_4B_GGUF.md)。下面的 Python 与 HTTP 示例以 0.8B 为例，把路径换成 2B 或 4B 目录即可。
 
 ### Python 调用（0.8B 示例）
 
@@ -557,7 +564,7 @@ python scripts/verify_export.py --url http://127.0.0.1:8787
 
 ### 训练配置
 
-下表保留 0.8B 训练配置；2B 的 CE + RLCD 配置和实际样本进度见 [2B 交付记录](docs/TRAINING_2B.md)。
+下表为 0.8B 的训练配置；2B 与 4B 在此基础上开启 RLCD，全局 batch 改为每步至少 2,048 条决策，见 [2B 交付记录](docs/TRAINING_2B.md) 与 [4B 模型卡](docs/MODEL_CARD_4B.md#训练细节)。
 
 | 项目 | 设置 |
 |---|---|
@@ -601,7 +608,7 @@ python scripts/finalize.py --run runs/cj-ddp --out models/chinese-decision-0.8b
 
 ### 可选：RLCD 训练目标
 
-`--rlcd` 会在分布交叉熵之外加入 Chinese-Jev 的 RLCD 项（基于适当评分规则奖励的策略梯度）。实现移植自 [Chinese-Jev 官方代码](https://github.com/gulucaptain/Chinese-Jev)，计算结果与原实现逐位一致。**默认关闭；本页原有 0.8B 结果未使用 RLCD，新增 2B 运行开启了 RLCD。**
+`--rlcd` 会在分布交叉熵之外加入 Chinese-Jev 的 RLCD 项（基于适当评分规则奖励的策略梯度）。实现移植自 [Chinese-Jev 官方代码](https://github.com/gulucaptain/Chinese-Jev)，计算结果与原实现逐位一致。**默认关闭；0.8B 未使用 RLCD，2B 与 4B 开启了 RLCD。**
 
 每个训练步对候选项 logits 做若干组零均值高斯扰动，用"对数得分 + 0.75 × 球面得分 − RPS"给每个扰动后的分布打分（RPS 只对 `score` 题生效），再把 logits 推向得分高于同组平均的扰动方向。RPS 让离正确等级越远的错误扣分越多，是唯一考虑等级顺序的项，因此最可能帮助 `score` 题。
 
@@ -671,7 +678,8 @@ chinese-decision/
 │   └── gguf/               # CPU 部署脚本（push / install / service）
 ├── docs/
 │   ├── MODELS.md           #   模型总览：选型、结果口径、外部基线
-│   ├── MODEL_CARD_*.md     #   四个模型卡（0.8B / 2B × BF16 / Q8_0）
+│   ├── MODEL_CARD_*.md     #   六个模型卡（0.8B / 2B / 4B × BF16 / Q8_0）
+│   ├── TRAINING_HISTORY.md #   各尺寸训练过程的 checkpoint 评测
 │   ├── TRAINING_2B.md      #   2B 训练、导出与诊断记录
 │   ├── CPU.md              #   0.8B CPU 部署与 GGUF 验证
 │   └── CPU_2B.md           #   2B CPU 部署与量化检查
@@ -693,8 +701,8 @@ python -m unittest discover -s tests
 ## 局限性
 
 - **配置要分开解读**：发布权重（合并后 + 默认温度）、训练 checkpoint（T = 1）和 Q8_0 的数值有细微差别，比较时请对齐配置，不要把差值归因于单一因素。Q8_0 全量在 GPU（llama.cpp CUDA）上测得，CPU 后端只做了有限输入对照。校准验证集不能当测试集，整体 ECE 低也不代表每个来源都校准良好。
-- **改善并不均匀**：2B 提升整体表现，但法律判断 / 金融评分 ACC 为 82.07% / 80.33%，低于 0.8B 的 85.60% / 82.83%；金融仍落后 Jev，商品分类存在训练波动，详见 [2B 诊断](docs/TRAINING_2B.md)。
-- **延迟高于编码器方案**：0.8B / 2B 解码器的单条延迟高于约 322M 的 Chinese-Jev 编码器模型。
+- **改善并不均匀**：2B 的法律判断 / 金融评分 ACC 为 82.07% / 80.33%，低于 0.8B 的 85.60% / 82.83%（4B 为 88.87% / 88.17%），详见 [2B 诊断](docs/TRAINING_2B.md)。4B 的商品分类来源（3,151 条）ACC 为 64.58%，低于 2B 的 70.96%，整体 ECE（1.00%）也高于 2B 和 0.8B，详见 [4B 模型卡](docs/MODEL_CARD_4B.md#局限性)。
+- **延迟高于编码器方案**：0.8B / 2B / 4B 解码器的单条延迟高于约 322M 的 Chinese-Jev 编码器模型；4B 的 GPU 单条 p50 约 60 ms，CPU Q8_0 约 2 秒。
 - **`confidence` 不是准确率**：它只反映分布的尖锐程度。若要按阈值自动执行，请先在自己的数据上验证校准效果。
 - **标签含义来自上游任务**：例如医疗匹配类标签表示原任务中的匹配关系，并不代表医学正确性。请勿将模型输出作为医疗、法律或金融决策的唯一依据。
 - **仅针对中文训练**，不适用于开放式生成。
@@ -704,14 +712,14 @@ python -m unittest discover -s tests
 
 - [Chinese-Jev](https://arxiv.org/abs/2609.36965)：CJ-Dataset、CJ-Bench、本文对比所用的基线结果，以及 RLCD 训练项的[参考实现](https://github.com/gulucaptain/Chinese-Jev)（Apache-2.0）。
 - [n4ze3m/hmm](https://github.com/n4ze3m/hmm)：选项字母决策目标、LoRA 流程、候选项格式与 System One 响应约定（MIT）。
-- [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) 与 [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B)：基础模型（Apache-2.0）。
+- [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)、[Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) 与 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)：基础模型（Apache-2.0）。
 
 ## 许可证
 
 - 本项目代码以 [MIT 许可证](LICENSE) 发布。
 - 改编自 hmm 的部分同样遵循 MIT 许可证，原始版权声明见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
 - `decision/rlcd.py` 改编自 Chinese-Jev，遵循 Apache-2.0，许可证全文见 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。
-- 基础模型 Qwen3.5-0.8B 与 Qwen3.5-2B 遵循 Apache-2.0，导出的模型目录会保留其原始 `LICENSE`。
+- 基础模型 Qwen3.5-0.8B、Qwen3.5-2B 与 Qwen3.5-4B 遵循 Apache-2.0，导出的模型目录会保留其原始 `LICENSE`。
 - CJ-Dataset 与 CJ-Bench 的许可按数据来源分别适用（部分来源为非商业许可），本项目不授予任何额外的再分发权限。
 
 ## 引用
