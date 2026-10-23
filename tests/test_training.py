@@ -53,9 +53,14 @@ class TrainingHelperTests(unittest.TestCase):
 class ResumeCompatibilityTests(unittest.TestCase):
     def test_defaults_reproduce_the_released_run_config(self):
         config = run_config(parse_args([]), world_size=4, data_revision="revision")
-        ignored = {"resume", "log_every", "world_size", "data_revision"}
+        ignored = {"resume", "log_every", "world_size", "data_revision", "keep_every"}
         self.assertEqual(set(config) - ignored, set(RELEASED_RUN))
         self.assertEqual({k: config[k] for k in RELEASED_RUN}, RELEASED_RUN)
+
+    def test_runs_saved_before_keep_every_still_resume(self):
+        config = run_config(parse_args(["--keep-every", "500"]), world_size=4, data_revision="r")
+        old = {k: v for k, v in config.items() if k != "keep_every"}
+        self.assertEqual(resume_conflicts(old, config), [])
 
     def test_rlcd_runs_are_recorded_and_never_resume_as_cross_entropy_runs(self):
         plain = run_config(parse_args([]), world_size=4, data_revision="r")

@@ -42,3 +42,4 @@ tmp
 # Local deploy settings (hosts, keys, remote paths)
 deploy/*/deploy.env
 experiments
+examples/2610.17309v2.pdf

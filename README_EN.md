@@ -608,7 +608,7 @@ python scripts/finalize.py --run runs/cj-ddp --out models/chinese-decision-0.8b
 
 The defaults of `scripts/train.py` are the release configuration in the table above. `--resume` compares every key of `config.json` and refuses to continue with different arguments; the number of GPUs may change. For a quick debug run, add `--debug-examples 512 --max-steps 12 --global-batch-size 8`.
 
-In the run directory, `last/` is the resume point, `best/` is the best adapter on validation, and `final/` is the adapter after the last step. The exported model directory contains the merged weights, `decision_config.json` (calibrated temperature and limits), the training config and summary, and the base model's `LICENSE`.
+In the run directory, `last/` is the resume point, `best/` is the best adapter on validation, and `final/` is the adapter after the last step. `last/` and `best/` are replaced in place; `--keep-every` (default 1000, 0 = off) also keeps a frozen `step-N/` copy every N steps for evaluating intermediate checkpoints later. The exported model directory contains the merged weights, `decision_config.json` (calibrated temperature and limits), the training config and summary, and the base model's `LICENSE`.
 
 ### Optional: RLCD Objective
 

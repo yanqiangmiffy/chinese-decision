@@ -604,7 +604,7 @@ python scripts/finalize.py --run runs/cj-ddp --out models/chinese-decision-0.8b
 
 `scripts/train.py` 的默认参数就是上表中的正式配置。`--resume` 会逐项比对 `config.json`，参数与原运行不一致时拒绝恢复；恢复时可以改变 GPU 数量。快速调试可以加上 `--debug-examples 512 --max-steps 12 --global-batch-size 8`。
 
-训练目录中，`last/` 是断点恢复点，`best/` 是验证集上最优的 adapter，`final/` 是最后一步的 adapter。导出的模型目录包含合并权重、`decision_config.json`（校准温度等）、训练配置与摘要，以及基础模型的 `LICENSE`。
+训练目录中，`last/` 是断点恢复点，`best/` 是验证集上最优的 adapter，`final/` 是最后一步的 adapter。`last/` 与 `best/` 会被原地替换；`--keep-every`（默认 1000，0 为关闭）每隔 N 步另存一份 `step-N/`，供之后评测各阶段 checkpoint。导出的模型目录包含合并权重、`decision_config.json`（校准温度等）、训练配置与摘要，以及基础模型的 `LICENSE`。
 
 ### 可选：RLCD 训练目标
 

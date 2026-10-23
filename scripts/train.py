@@ -10,6 +10,7 @@ import json
 import math
 import os
 import random
+import shutil
 import socket
 import time
 from collections import Counter
@@ -31,7 +32,7 @@ from decision.utils import log
 # Stored in config.json. --resume compares every config key, so renaming or adding
 # arguments (or changing this tag) makes existing runs impossible to resume.
 TRAINING_ALGORITHM = "ddp-record-mean-v2-shapes64"
-RESUME_IGNORED = {"resume", "log_every", "world_size"}
+RESUME_IGNORED = {"resume", "log_every", "world_size", "keep_every"}
 # Recorded only when --rlcd is on, so cross-entropy-only runs keep their original config.
 RLCD_ARGS = ("rlcd", "rlcd_group_size", "rlcd_sigma_start", "rlcd_sigma_end")
 VALIDATION_BATCH_SIZE, VALIDATION_TOKEN_BUDGET = 32, 16384
@@ -53,6 +54,8 @@ def parse_args(argv=None):
     parser.add_argument("--val-per-stratum", type=int, default=100)
     parser.add_argument("--eval-every", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=200)
+    parser.add_argument("--keep-every", type=int, default=1000,
+                        help="also keep a frozen copy of last/ as step-N/ every N steps (0 = off)")
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--lora-r", type=int, default=32)
@@ -187,7 +190,7 @@ def main():
     recent_rlcd = [0., 0., 0.] if args.rlcd else []  # cross-entropy, RLCD term, reward; summed over records
     last_stream_stats = Counter()
 
-    def checkpoint(epoch, batches_done):
+    def checkpoint(epoch, batches_done, keep=False):
         random_states = [None] * world
         dist.all_gather_object(random_states, {"torch": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state(device)})
         if rank == 0:
@@ -200,6 +203,12 @@ def main():
                         "epoch": epoch, "batches_done": batches_done, "best": best,
                         "stats": dict(stats), "random_states": random_states}, temporary / "training_state.pt")
             replace_directory(temporary, out / "last")
+            if keep:
+                # last/ and best/ are replaced in place; step-N/ stays for later evaluation.
+                kept = out / f"step-{step}.next"
+                shutil.copytree(out / "last", kept, dirs_exist_ok=True)
+                replace_directory(kept, out / f"step-{step}")
+                log("checkpoint_kept", step=step, path=str(out / f"step-{step}"))
             (out / "progress.json").write_text(json.dumps({"status": "running", "step": step, "examples_seen": examples_seen,
                                                            "world_size": world, "global_batch_size": args.global_batch_size,
                                                            "stats": dict(stats), "reader_stats": dict(last_stream_stats)}, indent=2))
@@ -305,8 +314,9 @@ def main():
             terminal = bool(args.max_steps and step >= args.max_steps)
             if step % args.eval_every == 0 or terminal:
                 validation()
-            if step == 1 or step % args.save_every == 0 or terminal or resume_checkpoint_pending:
-                checkpoint(epoch, batches_done)
+            keep = bool(args.keep_every and step % args.keep_every == 0)
+            if step == 1 or step % args.save_every == 0 or keep or terminal or resume_checkpoint_pending:
+                checkpoint(epoch, batches_done, keep)
                 resume_checkpoint_pending = False
             if terminal:
                 done = True
