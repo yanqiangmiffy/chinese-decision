@@ -108,6 +108,72 @@
 3. **扩大规模：** 使用 CLUENER 和人民日报全量数据，并加入 MSRA、Weibo；再接入关系抽取（DuIE）与事件论元（DuEE）。CalOn 的关系头结构可以沿用。
 4. **部署：** 跨度头不在 GGUF 中，抽取目前只能走 PyTorch（`SpanExtractor`）。
 
+## 意图 + 字段抽取（槽位填充）
+
+目标格式：`{"query": "Q: 打开空调", "response": {"device_control": {"device": "空调", "function": "打开"}}}`。决策头先在 6 个意图中选一个，跨度头再按该意图的字段抽取。代码见 [decision/slots.py](../decision/slots.py)。
+
+**Schema**（[examples/slot_filling/schema.json](../examples/slot_filling/schema.json)）
+
+| 意图 | 字段 |
+|---|---|
+| device_control | device、function、location、attribute、value |
+| weather_query | city、date |
+| music_play | singer、song |
+| navigation | destination |
+| alarm_set | time、event |
+| chitchat | 无字段 |
+
+标注规范：字段值必须是原句中的逐字片段；function 只标动词及其补语，不含“一下”“了”。
+
+**数据**
+
+- **训练：** 用 156 上的 Qwen3-32B 合成 3,600 条，脚本见 [scripts/synthesize_slot_data.py](../scripts/synthesize_slot_data.py)。共调用 272 次，丢弃对不齐的 319 条、使用 schema 外字段的 305 条、重复的 136 条。
+- **测试：** 79 句、170 个字段，见 [examples/slot_filling/test_handwritten.jsonl](../examples/slot_filling/test_handwritten.jsonl)。这些句子由 Claude 逐句手写，不经过 Qwen 生成，但也不是真实用户日志。
+- **训练集划分：** 打乱后先留出 200 条作开发集，再取前 N 条（100 / 500 / 2000，嵌套）加入上文的联合训练数据。其余配置与 `mt-joint` 完全相同。
+
+**端到端结果**（79 句）
+
+| 合成数据量 | 意图准确率 | 字段 P / R / F1 | 整句完全正确 |
+|---|---|---|---|
+| 0（即 `mt-joint`） | 98.7% | 100 / 8.2 / 15.2 | 13.9% |
+| 100 | 100% | 94.8 / 64.7 / 76.9 | 40.5% |
+| 500 | 100% | 98.2 / 94.7 / **96.4** | **89.9%** |
+| 2000 | 100% | 95.9 / 95.3 / 95.6 | 88.6% |
+
+- **样例：** “打开空调”在 N ≥ 100 时都输出 `{"device_control": {"function": "打开", "device": "空调"}}`。N=500 时两个字段的概率分别为 0.9995 和 0.995。
+- **数据量：** 500 条已经饱和，2000 条没有进一步提升（测试集小，1 句约等于 1.3 个百分点）。
+- **原有任务不受影响：** CLUENER F1 78.1–78.7，人民日报 87.1–89.4，DuEE 98.0–98.4%；CJ 保持集的结果与 N=0 处在同一水平。
+
+**剩余错误几乎都在字段边界上**
+
+- `关了` 被抽成 function，而规范要求 `关`；同类还有 `加热` vs `加热到`、`开始` vs `开始清扫`，以及“导航回家”中的 `家` 没有抽出来。
+- 原因不是合成标注违反规范（1,789 个 function 标签中只有 3 个以 “了” 结尾），而是 Qwen 很少写出“把X关了”“开一下”这类口语说法（3,600 条中只有 11 条）。
+- event 标注不一致：合成数据里 19% 的 event 带“叫我 / 提醒我”前缀，导致预测出“叫我起床”而不是“起床”。
+
+所以继续加同一来源的数据帮助不大，更有效的做法有三种：
+
+- 在合成提示中加入口语化的短动词句式；
+- 对合成标签做规范化，例如去掉 event 的“提醒我”前缀；
+- 补几十条真实用户话语的人工标注，并用真实日志构造测试集。
+
+```bash
+# 156：合成（约 15 分钟）→ 构建混合数据 → 训练 → 端到端评测
+python scripts/synthesize_slot_data.py --out datasets/slots/pool.jsonl --exclude examples/slot_filling/test_handwritten.jsonl
+python scripts/build_slot_mix.py --n 500 --out datasets/multitask-slots-500
+python scripts/train_multitask.py --data datasets/multitask-slots-500 --out runs/mt-slots-500
+python scripts/evaluate_slots.py --run runs/mt-slots-500
+```
+
+```python
+from decision.extraction import SpanExtractor
+from decision.slots import SlotFiller, load_schema
+
+filler = SlotFiller(SpanExtractor.from_run("models/chinese-decision-0.8b", "runs/mt-slots-500"),
+                    load_schema("examples/slot_filling/schema.json"))
+result = filler("打开空调")
+{"query": "Q: 打开空调", "response": {result["intent"]: result["slots"]}}
+```
+
 ## 复现
 
 ```bash
