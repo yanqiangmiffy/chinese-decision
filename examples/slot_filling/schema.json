@@ -1,0 +1,55 @@
+{
+  "instructions": "判断这句用户指令属于哪个意图类别。",
+  "guidelines": [
+    "每个字段的值必须是原句中逐字出现的连续片段，不改写、不补全。",
+    "function 只标动词本身，可带方向或结果补语（打开、关掉、调到、调高、设置为、拉上），不含“一下”“了”“吧”等虚词。",
+    "value 只标明确的数值、档位或模式，带单位（26度、二档、60%、睡眠模式、最大、一半）；“一点”“点”这类模糊程度不标。",
+    "attribute 是被调节的设备属性（温度、亮度、风速、音量、湿度）。",
+    "location 是房间或位置（客厅、主卧、二楼走廊、门口），不含“的”。",
+    "time 标完整的时间表达（明天早上七点、半小时后、每天晚上十点）。",
+    "句子里没有出现的字段不输出。"
+  ],
+  "intents": {
+    "device_control": {
+      "description": "控制家电或智能设备，如开关、调节",
+      "slots": {
+        "device": {"name": "设备", "description": "被控制的家电或智能设备的名称"},
+        "function": {"name": "功能", "description": "要对设备执行的操作或动作"},
+        "location": {"name": "位置", "description": "设备所在的房间或位置"},
+        "attribute": {"name": "属性", "description": "被调节的设备属性，如温度、亮度、风速"},
+        "value": {"name": "参数值", "description": "要设定的数值、档位或模式"}
+      }
+    },
+    "weather_query": {
+      "description": "查询天气、气温或空气质量",
+      "slots": {
+        "city": {"name": "城市", "description": "要查询天气的城市或地点"},
+        "date": {"name": "日期", "description": "要查询的日期或时间段"}
+      }
+    },
+    "music_play": {
+      "description": "播放音乐或音频",
+      "slots": {
+        "singer": {"name": "歌手", "description": "歌手或乐队的名字"},
+        "song": {"name": "歌曲", "description": "歌曲名"}
+      }
+    },
+    "navigation": {
+      "description": "导航或查询路线",
+      "slots": {
+        "destination": {"name": "目的地", "description": "要去的地点"}
+      }
+    },
+    "alarm_set": {
+      "description": "设置闹钟或提醒",
+      "slots": {
+        "time": {"name": "时间", "description": "闹钟或提醒的时间"},
+        "event": {"name": "事项", "description": "需要提醒的事情"}
+      }
+    },
+    "chitchat": {
+      "description": "闲聊或其他请求",
+      "slots": {}
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{"query": "打开空调", "intent": "device_control", "slots": {"function": "打开", "device": "空调"}}
+{"query": "把客厅的灯关掉", "intent": "device_control", "slots": {"location": "客厅", "device": "灯", "function": "关掉"}}
+{"query": "空调温度调到26度", "intent": "device_control", "slots": {"device": "空调", "attribute": "温度", "function": "调到", "value": "26度"}}
+{"query": "关闭电视", "intent": "device_control", "slots": {"function": "关闭", "device": "电视"}}
+{"query": "帮我打开卧室的加湿器", "intent": "device_control", "slots": {"function": "打开", "location": "卧室", "device": "加湿器"}}
+{"query": "把卧室空调调成制冷模式", "intent": "device_control", "slots": {"location": "卧室", "device": "空调", "function": "调成", "value": "制冷模式"}}
+{"query": "热水器温度设置为45度", "intent": "device_control", "slots": {"device": "热水器", "attribute": "温度", "function": "设置为", "value": "45度"}}
+{"query": "关一下厨房的抽油烟机", "intent": "device_control", "slots": {"function": "关", "location": "厨房", "device": "抽油烟机"}}
+{"query": "把窗帘拉上", "intent": "device_control", "slots": {"device": "窗帘", "function": "拉上"}}
+{"query": "让扫地机器人开始清扫", "intent": "device_control", "slots": {"device": "扫地机器人", "function": "开始清扫"}}
+{"query": "台灯亮度调到最低", "intent": "device_control", "slots": {"device": "台灯", "attribute": "亮度", "function": "调到", "value": "最低"}}
+{"query": "打开阳台的晾衣架", "intent": "device_control", "slots": {"function": "打开", "location": "阳台", "device": "晾衣架"}}
+{"query": "把电风扇风速调大一点", "intent": "device_control", "slots": {"device": "电风扇", "attribute": "风速", "function": "调大"}}
+{"query": "洗衣机暂停一下", "intent": "device_control", "slots": {"device": "洗衣机", "function": "暂停"}}
+{"query": "请把书房的灯打开", "intent": "device_control", "slots": {"location": "书房", "device": "灯", "function": "打开"}}
+{"query": "电视音量调小", "intent": "device_control", "slots": {"device": "电视", "attribute": "音量", "function": "调小"}}
+{"query": "把空气净化器开到睡眠模式", "intent": "device_control", "slots": {"device": "空气净化器", "function": "开到", "value": "睡眠模式"}}
+{"query": "关掉所有的灯", "intent": "device_control", "slots": {"function": "关掉", "device": "灯"}}
+{"query": "开一下主卧的地暖", "intent": "device_control", "slots": {"function": "开", "location": "主卧", "device": "地暖"}}
+{"query": "冰箱温度调低两度", "intent": "device_control", "slots": {"device": "冰箱", "attribute": "温度", "function": "调低", "value": "两度"}}
+{"query": "把音箱声音开大点", "intent": "device_control", "slots": {"device": "音箱", "attribute": "声音", "function": "开大"}}
+{"query": "帮我关上车库门", "intent": "device_control", "slots": {"function": "关上", "device": "车库门"}}
+{"query": "卫生间的排气扇打开", "intent": "device_control", "slots": {"location": "卫生间", "device": "排气扇", "function": "打开"}}
+{"query": "把投影仪关了", "intent": "device_control", "slots": {"device": "投影仪", "function": "关"}}
+{"query": "启动电饭煲", "intent": "device_control", "slots": {"function": "启动", "device": "电饭煲"}}
+{"query": "空调调到除湿模式", "intent": "device_control", "slots": {"device": "空调", "function": "调到", "value": "除湿模式"}}
+{"query": "把儿童房的夜灯调暗", "intent": "device_control", "slots": {"location": "儿童房", "device": "夜灯", "function": "调暗"}}
+{"query": "打开客厅电视", "intent": "device_control", "slots": {"function": "打开", "location": "客厅", "device": "电视"}}
+{"query": "关闭全部窗户", "intent": "device_control", "slots": {"function": "关闭", "device": "窗户"}}
+{"query": "热死了，把空调开到最大", "intent": "device_control", "slots": {"device": "空调", "function": "开到", "value": "最大"}}
+{"query": "把加湿器湿度设成60%", "intent": "device_control", "slots": {"device": "加湿器", "attribute": "湿度", "function": "设成", "value": "60%"}}
+{"query": "新风系统打开", "intent": "device_control", "slots": {"device": "新风系统", "function": "打开"}}
+{"query": "关闭门口的摄像头", "intent": "device_control", "slots": {"function": "关闭", "location": "门口", "device": "摄像头"}}
+{"query": "把卧室的空调关了", "intent": "device_control", "slots": {"location": "卧室", "device": "空调", "function": "关"}}
+{"query": "给我把灯光调成暖色", "intent": "device_control", "slots": {"device": "灯光", "function": "调成", "value": "暖色"}}
+{"query": "打开洗碗机", "intent": "device_control", "slots": {"function": "打开", "device": "洗碗机"}}
+{"query": "浴霸开一下", "intent": "device_control", "slots": {"device": "浴霸", "function": "开"}}
+{"query": "将客厅窗帘打开一半", "intent": "device_control", "slots": {"location": "客厅", "device": "窗帘", "function": "打开", "value": "一半"}}
+{"query": "把电暖器调到二档", "intent": "device_control", "slots": {"device": "电暖器", "function": "调到", "value": "二档"}}
+{"query": "关掉餐厅的吊灯", "intent": "device_control", "slots": {"function": "关掉", "location": "餐厅", "device": "吊灯"}}
+{"query": "空调风速调成自动", "intent": "device_control", "slots": {"device": "空调", "attribute": "风速", "function": "调成", "value": "自动"}}
+{"query": "打开二楼走廊的灯", "intent": "device_control", "slots": {"function": "打开", "location": "二楼走廊", "device": "灯"}}
+{"query": "让热水器加热到50度", "intent": "device_control", "slots": {"device": "热水器", "function": "加热到", "value": "50度"}}
+{"query": "嘿管家，帮我把电视关了", "intent": "device_control", "slots": {"device": "电视", "function": "关"}}
+{"query": "灯太亮了，调暗一点", "intent": "device_control", "slots": {"device": "灯", "function": "调暗"}}
+{"query": "今天北京天气怎么样", "intent": "weather_query", "slots": {"date": "今天", "city": "北京"}}
+{"query": "明天上海会下雨吗", "intent": "weather_query", "slots": {"date": "明天", "city": "上海"}}
+{"query": "周末杭州天气如何", "intent": "weather_query", "slots": {"date": "周末", "city": "杭州"}}
+{"query": "后天广州气温多少度", "intent": "weather_query", "slots": {"date": "后天", "city": "广州"}}
+{"query": "帮我查一下成都的天气", "intent": "weather_query", "slots": {"city": "成都"}}
+{"query": "下周一深圳热不热", "intent": "weather_query", "slots": {"date": "下周一", "city": "深圳"}}
+{"query": "今晚会降温吗", "intent": "weather_query", "slots": {"date": "今晚"}}
+{"query": "武汉这几天空气质量怎么样", "intent": "weather_query", "slots": {"city": "武汉", "date": "这几天"}}
+{"query": "播放周杰伦的晴天", "intent": "music_play", "slots": {"singer": "周杰伦", "song": "晴天"}}
+{"query": "来一首邓紫棋的光年之外", "intent": "music_play", "slots": {"singer": "邓紫棋", "song": "光年之外"}}
+{"query": "我想听陈奕迅的歌", "intent": "music_play", "slots": {"singer": "陈奕迅"}}
+{"query": "放一首稻香", "intent": "music_play", "slots": {"song": "稻香"}}
+{"query": "播放五月天的倔强", "intent": "music_play", "slots": {"singer": "五月天", "song": "倔强"}}
+{"query": "随便放点轻音乐", "intent": "music_play", "slots": {}}
+{"query": "给我放王菲的红豆", "intent": "music_play", "slots": {"singer": "王菲", "song": "红豆"}}
+{"query": "导航到首都机场", "intent": "navigation", "slots": {"destination": "首都机场"}}
+{"query": "去西湖怎么走", "intent": "navigation", "slots": {"destination": "西湖"}}
+{"query": "帮我规划去公司的路线", "intent": "navigation", "slots": {"destination": "公司"}}
+{"query": "开车去南京南站", "intent": "navigation", "slots": {"destination": "南京南站"}}
+{"query": "导航回家", "intent": "navigation", "slots": {"destination": "家"}}
+{"query": "从这里到天安门要多久", "intent": "navigation", "slots": {"destination": "天安门"}}
+{"query": "带我去人民医院", "intent": "navigation", "slots": {"destination": "人民医院"}}
+{"query": "明天早上七点叫我起床", "intent": "alarm_set", "slots": {"time": "明天早上七点", "event": "起床"}}
+{"query": "设一个下午三点的闹钟", "intent": "alarm_set", "slots": {"time": "下午三点"}}
+{"query": "半小时后提醒我关火", "intent": "alarm_set", "slots": {"time": "半小时后", "event": "关火"}}
+{"query": "每天晚上十点提醒我吃药", "intent": "alarm_set", "slots": {"time": "每天晚上十点", "event": "吃药"}}
+{"query": "定一个6点半的闹钟", "intent": "alarm_set", "slots": {"time": "6点半"}}
+{"query": "周五下午提醒我交报告", "intent": "alarm_set", "slots": {"time": "周五下午", "event": "交报告"}}
+{"query": "十分钟后叫我", "intent": "alarm_set", "slots": {"time": "十分钟后"}}
+{"query": "你叫什么名字", "intent": "chitchat", "slots": {}}
+{"query": "讲个笑话吧", "intent": "chitchat", "slots": {}}
+{"query": "今天心情不太好", "intent": "chitchat", "slots": {}}
+{"query": "你会做什么", "intent": "chitchat", "slots": {}}
+{"query": "谢谢你", "intent": "chitchat", "slots": {}}
