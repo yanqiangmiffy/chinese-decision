@@ -25,8 +25,8 @@ import torch
 from peft import LoraConfig, TaskType, get_peft_model
 
 from decision.data import encode, greedy_batches
-from decision.extraction import (ExtractionEncoder, SpanHead, SpanLoss, backbone_hidden, collate_extraction, decode,
-                                 entity_metrics)
+from decision.extraction import (ExtractionEncoder, SpanHead, SpanLoss, backbone_hidden, collate_extraction,
+                                 entity_metrics, predict)
 from decision.metrics import summarize
 from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
 from decision.rlcd_loss import RLCDLoss, RLCDLossConfig, linear_schedule
@@ -100,28 +100,6 @@ def decision_groups(rows):
     return {name: summarize(items)["all"] for name, items in sorted(groups.items())}
 
 
-@torch.no_grad()
-def predict_extraction(model, head, items, pad_id, device, none_shift, token_budget):
-    model.eval()
-    head.eval()
-    predictions = [None] * len(items)
-    order = sorted(range(len(items)), key=lambda i: len(items[i]["input_ids"]))
-    # Inference batches stay small in candidates as well as tokens: the head scores every span.
-    for batch_ids in greedy_batches([dict(items[i], index=i) for i in order], 16, token_budget):
-        batch = collate_extraction(batch_ids, pad_id).to(device)
-        with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            hidden = backbone_hidden(model, batch)
-        utilities = head(hidden, batch)
-        start = 0
-        for item in batch_ids:
-            count = len(item["cands"])
-            predictions[item["index"]] = decode(item, utilities[start:start + count], none_shift)
-            start += count
-    model.train()
-    head.train()
-    return predictions
-
-
 def evaluate_all(model, head, tokenizer, letters, decision_items, extraction_items, args, device, none_shift):
     result = {}
     if decision_items:
@@ -130,9 +108,10 @@ def evaluate_all(model, head, tokenizer, letters, decision_items, extraction_ite
     if extraction_items and head is not None:
         result["extraction"] = {}
         for source, items in extraction_items.items():
-            predictions = predict_extraction(model, head, items, tokenizer.pad_token_id, device, none_shift,
-                                             args.token_budget)
+            predictions = predict(model, head, items, tokenizer.pad_token_id, none_shift, token_budget=args.token_budget)
             result["extraction"][source] = entity_metrics(items, predictions)
+            model.train()
+            head.train()
     return result
 
 

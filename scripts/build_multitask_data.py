@@ -41,6 +41,19 @@ PEOPLE_DAILY_TYPES = [
     ("LOC", "地名", "国家、城市、山川等地理位置"),
     ("ORG", "机构名", "组织、团体、机构的名称"),
 ]
+# Test only: none of 国籍/学历/专业/民族/职称 is a training type, so Resume measures unseen types.
+RESUME_TYPES = [
+    ("NAME", "人名", "人物的姓名"),
+    ("CONT", "国籍", "国家或地区归属，如“中国国籍”"),
+    ("RACE", "民族", "民族名称，如汉族"),
+    ("EDU", "学历", "学历与学位，如本科、硕士"),
+    ("PRO", "专业", "所学专业"),
+    ("TITLE", "职称", "职务、职称与头衔"),
+    ("ORG", "组织机构", "公司、学校、政府等机构的名称"),
+    ("LOC", "地点", "籍贯等地名"),
+]
+RESUME_TAGS = ["O", "B-CONT", "I-CONT", "B-EDU", "I-EDU", "B-LOC", "I-LOC", "B-NAME", "I-NAME", "B-ORG", "I-ORG",
+               "B-PRO", "I-PRO", "B-RACE", "I-RACE", "B-TITLE", "I-TITLE"]
 DUEE_INSTRUCTIONS = "按百度DuEE事件体系，判断这句新闻描述的事件属于哪一个大类。"
 CJ_RETENTION = ("ifeng_news", "chnsenticorp", "slurp_massive")
 
@@ -70,6 +83,26 @@ def span_rows(frame, source, split, types, stats):
         stats[f"{source}:{split}:entities"] += len(kept)
         yield {"id": f"{source}-{split}-{index}", "source": source, "text": text,
                "types": type_list(types), "entities": sorted(kept, key=lambda e: (e["start"], e["end"]))}
+
+
+def bio_rows(frame, source, split, types, tags, stats):
+    """Character-tagged BIO rows as character-offset entities; an I- tag without its B- starts a new entity."""
+    for index, (chars, ids) in enumerate(zip(frame["tokens"], frame["ner_tags"])):
+        if any(len(c) != 1 for c in chars):
+            stats[f"{source}:{split}:skipped_rows"] += 1
+            continue
+        entities, current = [], None
+        for position, tag in enumerate([tags[i] for i in ids] + ["O"]):
+            prefix, _, label = tag.partition("-")
+            if current and (prefix != "I" or label != current["label"]):
+                current["end"] = position
+                entities.append(current)
+                current = None
+            if prefix == "B" or (prefix == "I" and current is None):
+                current = {"start": position, "label": label}
+        stats[f"{source}:{split}:entities"] += len(entities)
+        yield {"id": f"{source}-{split}-{index}", "source": source, "text": "".join(chars),
+               "types": type_list(types), "entities": entities}
 
 
 def duee_rows(frame, split):
@@ -168,6 +201,10 @@ def main():
                         ("test", sample(splits["test"], args.people_daily_test)[0])):
         counts[f"extraction/people_daily.{split}"] = write_jsonl(
             out / "extraction" / f"people_daily.{split}.jsonl", rows)
+
+    resume = list(bio_rows(parquet(args.ie_root, "Resume-NER/data/test-*.parquet"), "resume_zero_shot", "test",
+                           RESUME_TYPES, RESUME_TAGS, stats))
+    counts["extraction/resume_zero_shot.test"] = write_jsonl(out / "extraction" / "resume_zero_shot.test.jsonl", resume)
 
     # DuEE event categories; descriptions list the subtypes seen in training.
     duee_train, subtypes = duee_rows(parquet(args.ie_root, "DuEE-HF/data/train-*.parquet"), "train")

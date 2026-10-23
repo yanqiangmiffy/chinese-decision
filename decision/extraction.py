@@ -25,10 +25,12 @@ after it could influence the span vectors.
 import re
 from dataclasses import dataclass, replace
 from functools import lru_cache
+from pathlib import Path
 
 import torch
 from torch import nn
 
+from .data import greedy_batches
 from .rlcd_loss import RLCDLoss, RLCDLossConfig
 
 INSTRUCTION = "从文本中找出下列类型的实体。\n实体类型：\n"
@@ -252,10 +254,67 @@ def decode(item, utilities, none_shift=0.0, threshold=0.0, flat=True):
     return result
 
 
+@torch.no_grad()
+def predict(model, head, items, pad_id, none_shift=0.0, threshold=0.0, token_budget=12288, batch_size=16):
+    """Decoded entities for encoded rows, in input order; batches are cut by length and token budget."""
+    was_training = model.training, head.training
+    model.eval()
+    head.eval()
+    device = next(head.parameters()).device
+    predictions = [None] * len(items)
+    order = sorted(range(len(items)), key=lambda i: len(items[i]["input_ids"]))
+    for batch_items in greedy_batches([dict(items[i], index=i) for i in order], batch_size, token_budget):
+        batch = collate_extraction(batch_items, pad_id).to(device)
+        with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+            hidden = backbone_hidden(model, batch)
+        utilities, start = head(hidden, batch), 0
+        for item in batch_items:
+            count = len(item["cands"])
+            predictions[item["index"]] = decode(item, utilities[start:start + count], none_shift, threshold)
+            start += count
+    model.train(was_training[0])
+    head.train(was_training[1])
+    return predictions
+
+
+class SpanExtractor:
+    """A trained run for inference: `extract(text, types)` returns typed character spans with probabilities.
+
+    `types` is a list of type names or a `{name: description}` mapping; any names work, including
+    ones never seen in training.
+    """
+
+    def __init__(self, model, head, tokenizer, none_shift=0.0, echo=True):
+        self.model, self.head, self.tokenizer, self.none_shift = model.eval(), head.eval(), tokenizer, none_shift
+        self.encoder = ExtractionEncoder(tokenizer, head.config["max_span_units"], echo)
+
+    @classmethod
+    def from_run(cls, base, run, device="cuda"):
+        from .model import load_model, load_tokenizer
+        state = torch.load(Path(run) / "span_head.pt", map_location=device)
+        head = SpanHead(**state["config"]).to(device)
+        head.load_state_dict(state["state_dict"])
+        model = load_model(base, str(Path(run) / "adapter"), device=device)
+        return cls(model, head, load_tokenizer(base), state["none_shift"], state["echo"])
+
+    def predict(self, rows, threshold=0.0):
+        items = [self.encoder.encode(row) for row in rows]
+        if any(item is None for item in items):
+            raise ValueError("input longer than the encoder's max_length")
+        return items, predict(self.model, self.head, items, self.tokenizer.pad_token_id, self.none_shift, threshold)
+
+    def extract(self, text, types, threshold=0.0):
+        described = types.items() if isinstance(types, dict) else ((name, "") for name in types)
+        row = {"text": text, "types": [{"key": n, "name": n, "description": d} for n, d in described]}
+        _, (found,) = self.predict([row], threshold)
+        return [{"text": text[s:e], "label": label, "start": s, "end": e, "score": round(p, 4)}
+                for s, e, label, p in sorted(found)]
+
+
 def entity_metrics(items, predictions, bins=10):
-    """Micro precision/recall/F1 over exact (start, end, type) matches, plus ECE of predicted entities."""
+    """Micro precision/recall/F1 over exact (start, end, type) matches, per type as well, plus ECE of predictions."""
     tp = fp = fn = unrepresented = 0
-    confidences, hits = [], []
+    confidences, hits, per_type = [], [], {}
     for item, predicted in zip(items, predictions):
         gold = item["gold_entities"]
         keys = {(s, e, t) for s, e, t, _ in predicted}
@@ -263,6 +322,9 @@ def entity_metrics(items, predictions, bins=10):
         fp += len(keys - gold)
         fn += len(gold - keys)
         unrepresented += item["unrepresented"]
+        for kind, found in (("tp", keys & gold), ("fp", keys - gold), ("fn", gold - keys)):
+            for _, _, label in found:
+                per_type.setdefault(label, {"tp": 0, "fp": 0, "fn": 0})[kind] += 1
         for s, e, t, probability in predicted:
             confidences.append(probability)
             hits.append(float((s, e, t) in gold))
@@ -274,6 +336,8 @@ def entity_metrics(items, predictions, bins=10):
         if chosen:
             ece += len(chosen) / len(confidences) * abs(sum(hits[i] for i in chosen) / len(chosen)
                                                         - sum(confidences[i] for i in chosen) / len(chosen))
+    types = {label: {"gold": c["tp"] + c["fn"], "f1": 2 * c["tp"] / (2 * c["tp"] + c["fp"] + c["fn"])}
+             for label, c in sorted(per_type.items())}
     return {"rows": len(items), "gold": tp + fn, "predicted": tp + fp, "precision": precision, "recall": recall,
             "f1": 2 * precision * recall / (precision + recall) if precision + recall else 0.0,
-            "entity_ece": ece if confidences else None, "unrepresented_gold": unrepresented}
+            "entity_ece": ece if confidences else None, "unrepresented_gold": unrepresented, "per_type": types}
