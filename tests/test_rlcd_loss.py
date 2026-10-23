@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from decision.rlcd import rlcd_loss
-from examples.rlcd_loss import (RLCDLoss, RLCDLossConfig, masked_log_softmax, proper_score)
+from decision.rlcd_loss import (RLCDLoss, RLCDLossConfig, masked_log_softmax, proper_score)
 
 
 def random_decisions(sizes, slots, seed):

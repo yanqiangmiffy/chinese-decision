@@ -1,6 +1,6 @@
 # 校准决策模型：RLCD 训练伪代码
 
-本文是独立设计，不是 TypeSafe Jev 内部算法的复现（其损失函数未公开）。损失函数已实现为可运行的参考代码 [examples/rlcd_loss.py](../examples/rlcd_loss.py)，只依赖 PyTorch。数据、模型前向、分布式与存储部分保留为伪代码。生产训练器 [decision/rlcd.py](../decision/rlcd.py) 保持不变。
+本文是独立设计，不是 TypeSafe Jev 内部算法的复现（其损失函数未公开）。损失函数已实现为可运行的参考代码 [decision/rlcd_loss.py](../decision/rlcd_loss.py)，只依赖 PyTorch。数据、模型前向、分布式与存储部分保留为伪代码。生产训练器 [decision/rlcd.py](../decision/rlcd.py) 保持不变。
 
 ## 1. 损失定义
 
@@ -51,7 +51,7 @@ L_rlcd = -mean_g A_g * log N(z~_g; z, sigma^2 I)      # d/dz log N = (z~_g - z) 
 
 ```python
 import torch
-from examples.rlcd_loss import RLCDLoss, RLCDLossConfig
+from decision.rlcd_loss import RLCDLoss, RLCDLossConfig
 
 logits = torch.tensor([[1.2, 0.3, 0.0], [0.2, 0.7, -0.4]], requires_grad=True)
 mask = torch.tensor([[True, True, False], [True, True, True]])
@@ -120,7 +120,7 @@ def score_candidates(model, batch):
 
 ```python
 from dataclasses import replace
-from examples.rlcd_loss import RLCDLoss, RLCDLossConfig, linear_schedule
+from decision.rlcd_loss import RLCDLoss, RLCDLossConfig, linear_schedule
 
 config = RLCDLossConfig(estimator="reinforce", num_samples=8, rlcd_weight=1.0, reduction="sum")
 sigma_start, sigma_end = 0.4, 0.1
@@ -298,7 +298,7 @@ L = -mean A * (log p(a) + log p(c))
 3. REINFORCE 的采样、奖励和基线停止梯度；reparam 的采样保留梯度。
 4. 只在校准集拟合温度，阈值锁定后报告独立测试集的风险；同时保留原始与校准后的结果。ECE 降低本身不能说明模型更有用。
 
-验证记录（2026-10-23，CPU）：[tests/test_rlcd_loss_example.py](../tests/test_rlcd_loss_example.py) 的 6 项检查全部通过：
+验证记录（2026-10-23，CPU）：[tests/test_rlcd_loss.py](../tests/test_rlcd_loss.py) 的 6 项检查全部通过：
 
 - 目标分布在含 RPS 的评分下得分最高；
 - `rlcd_weight=0` 时与 `F.cross_entropy` 的软标签结果一致；
