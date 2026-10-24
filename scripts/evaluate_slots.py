@@ -10,9 +10,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from decision.extraction import SpanExtractor
-from decision.slots import SlotFiller, load_schema
+from decision.data.slots import load_schema
+from decision.pipeline import SlotFillingPipeline
 from decision.utils import log, write_json
+from evaluate_extraction import load_pipeline
 
 
 def f1(tp, fp, fn):
@@ -53,7 +54,7 @@ def main():
     parser.add_argument("--test", default="examples/slot_filling/test_handwritten.jsonl")
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
-    filler = SlotFiller(SpanExtractor.from_run(args.base, args.run, args.device), load_schema(args.schema))
+    filler = SlotFillingPipeline(load_pipeline(args.base, args.run, args.device), load_schema(args.schema))
     rows = [json.loads(line) for line in open(args.test, encoding="utf-8") if line.strip()]
     predictions = [filler(row["query"]) for row in rows]
     metrics = score(rows, predictions)

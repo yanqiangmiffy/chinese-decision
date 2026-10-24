@@ -17,11 +17,11 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
-from decision.api import build_answer
-from decision.inference import GGUFBackend, TransformersBackend, candidate_probabilities
-from decision.schema import LETTERS, MAX_LENGTH, PROMPT_VERSION, compile_prompt, options_for
-from decision.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
-from decision.tournament import from_request as tournament_from
+from decision.serving.api import build_answer
+from decision.serving.backends import GGUFBackend, TransformersBackend, candidate_probabilities
+from decision.processing import LETTERS, MAX_LENGTH, PROMPT_VERSION, compile_prompt, options_for
+from decision.serving.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
+from decision.serving.tournament import from_request as tournament_from
 from decision.utils import model_name_for
 
 MAX_QUESTIONS = 64

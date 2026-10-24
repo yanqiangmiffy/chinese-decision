@@ -138,8 +138,8 @@ health 应显示 model=chinese-decision-4b、step=5446、backend=gguf、device=c
 ```python
 import json
 from pathlib import Path
-from decision.inference import GGUFBackend, candidate_probabilities
-from decision.schema import compile_prompt, options_for
+from decision.serving.backends import GGUFBackend, candidate_probabilities
+from decision.processing import compile_prompt, options_for
 
 base = Path("models/chinese-decision-4b-gguf")
 config = json.loads((base / "decision_config.json").read_text(encoding="utf-8"))

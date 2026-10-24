@@ -6,7 +6,7 @@ sequence ID; only its final input token requests logits. No tokens are generated
 import math
 import sys
 
-from .schema import LETTERS
+from ..configuration import LETTERS
 
 
 class GGUFSequenceBatch:

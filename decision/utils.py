@@ -1,8 +1,17 @@
-"""Small I/O helpers shared by the command-line scripts."""
+"""Small helpers shared by the library and the command-line scripts."""
 import hashlib
 import json
 import time
 from pathlib import Path
+
+
+def resolve_pretrained(name_or_path, revision=None):
+    """A local directory for a path or a Hugging Face Hub repository id (downloaded on first use)."""
+    path = Path(name_or_path)
+    if path.exists():
+        return path
+    from huggingface_hub import snapshot_download
+    return Path(snapshot_download(repo_id=str(name_or_path), revision=revision))
 
 
 def model_name_for(base, config=None):

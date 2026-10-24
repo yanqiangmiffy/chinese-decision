@@ -68,8 +68,8 @@ def backend_summary(report):
 def worker(args):
     import importlib.metadata
     import psutil
-    from decision.inference import GGUFBackend, TransformersBackend, candidate_probabilities
-    from decision.schema import compile_prompt, options_for
+    from decision.serving.backends import GGUFBackend, TransformersBackend, candidate_probabilities
+    from decision.processing import compile_prompt, options_for
 
     started = time.perf_counter()
     engine = (TransformersBackend(args.base, device="cpu", threads=args.threads) if args.worker == "transformers"

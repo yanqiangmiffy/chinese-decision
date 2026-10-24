@@ -1,4 +1,4 @@
-"""Decision metrics: validation summaries for training, streaming metrics for CJ-Bench.
+"""Metrics: decision validation summaries, streaming CJ-Bench metrics, and span extraction scores.
 
 The two ECE definitions differ on purpose and are kept separate:
 - `summarize` (validation during training) uses 10 equal-width bins on float32 probabilities;
@@ -124,3 +124,39 @@ class BenchmarkMetrics:
                 "macro_domain_accuracy": average(domains, "accuracy"),
                 "macro_domain_distribution_nll": average(domains, "distribution_nll"),
                 "macro_domain_type_accuracy": average(strata, "accuracy")}
+
+
+def entity_metrics(items, predictions, bins=10):
+    """Micro precision/recall/F1 over exact (start, end, type) matches, per type as well, plus ECE of predictions.
+
+    `items` need `gold_entities` (a set of (start, end, type)) and `unrepresented` (gold spans the
+    encoder could not represent), as `DecisionProcessor.encode_extraction` gives them.
+    """
+    tp = fp = fn = unrepresented = 0
+    confidences, hits, per_type = [], [], {}
+    for item, predicted in zip(items, predictions):
+        gold = item["gold_entities"]
+        keys = {(s, e, t) for s, e, t, _ in predicted}
+        tp += len(keys & gold)
+        fp += len(keys - gold)
+        fn += len(gold - keys)
+        unrepresented += item["unrepresented"]
+        for kind, found in (("tp", keys & gold), ("fp", keys - gold), ("fn", gold - keys)):
+            for _, _, label in found:
+                per_type.setdefault(label, {"tp": 0, "fp": 0, "fn": 0})[kind] += 1
+        for s, e, t, probability in predicted:
+            confidences.append(probability)
+            hits.append(float((s, e, t) in gold))
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    ece = 0.0
+    for b in range(bins):
+        chosen = [i for i, c in enumerate(confidences) if b / bins <= c < (b + 1) / bins or (b == bins - 1 and c == 1)]
+        if chosen:
+            ece += len(chosen) / len(confidences) * abs(sum(hits[i] for i in chosen) / len(chosen)
+                                                        - sum(confidences[i] for i in chosen) / len(chosen))
+    types = {label: {"gold": c["tp"] + c["fn"], "f1": 2 * c["tp"] / (2 * c["tp"] + c["fp"] + c["fn"])}
+             for label, c in sorted(per_type.items())}
+    return {"rows": len(items), "gold": tp + fn, "predicted": tp + fp, "precision": precision, "recall": recall,
+            "f1": 2 * precision * recall / (precision + recall) if precision + recall else 0.0,
+            "entity_ece": ece if confidences else None, "unrepresented_gold": unrepresented, "per_type": types}

@@ -1,10 +1,10 @@
 # CJ-IE：中文信息抽取的大规模多任务数据
 
-日期：2026-10-23。分支：`feat/classification-extraction`。构建脚本：[scripts/build_ie_data.py](../scripts/build_ie_data.py)，转换代码：[decision/iedata/](../decision/iedata/)。
+日期：2026-10-23。分支：`feat/classification-extraction`。构建脚本：[scripts/build_ie_data.py](../scripts/build_ie_data.py)，转换代码：[decision/data/ie/](../decision/data/ie/)。
 
 CJ-IE 是多任务训练里信息抽取的那一部分。它把 `ie_collections` 中的中文 NER、关系和事件数据整理成两种头都能直接读取的格式，并划分好训练集、验证集和测试集：
 
-- **跨度头**（[decision/extraction.py](../decision/extraction.py)）：读取 `{"text", "types", "entities"}` 跨度行；
+- **跨度头**（[decision/modeling.py](../decision/modeling.py) 的 `SpanHead`，输入由 `DecisionProcessor.encode_extraction` 编码）：读取 `{"text", "types", "entities"}` 跨度行；
 - **决策头**：读取 CJ-Dataset 格式的决策（`state / questions / gold / _meta`）。
 
 目录布局与 [MULTITASK_EXTRACTION.md](MULTITASK_EXTRACTION.md) 中的 `multitask-mini` 相同，`scripts/train_multitask.py --data datasets/cj-ie` 可以直接读取。
@@ -164,7 +164,7 @@ CMeIE 的主体和客体也按同样方法定位。
 建议的接入顺序：
 
 1. **LEVEN 和 LexRel：** 法律是这次遗忘最严重的领域，它们又带显式负例和类型定义；
-2. **MASSIVE、CAIS、FewJoint：** 补意图与槽位，可以接到 `decision/slots.py` 的级联用法上；
+2. **MASSIVE、CAIS、FewJoint：** 补意图与槽位，可以接到 `SlotFillingPipeline`（[decision/pipeline.py](../decision/pipeline.py)）的级联用法上；
 3. **IEPile、YAYI：** 先只取能定位的样本，用来扩充类型名的多样性。
 
 ## 训练时的注意事项

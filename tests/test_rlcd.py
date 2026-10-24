@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from decision.rlcd import proper_reward, rlcd_loss, rlcd_sigma
+from decision.training.group_rlcd import proper_reward, rlcd_loss, rlcd_sigma
 
 
 def items(*kinds_and_sizes):

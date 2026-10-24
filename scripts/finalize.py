@@ -12,32 +12,12 @@ from pathlib import Path
 
 import torch
 
-from decision.data import validation_items
+from decision.data.cj import validation_items
 from decision.metrics import summarize
-from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
-from decision.schema import LETTERS
-from decision.training import evaluate
+from decision.modeling import DecisionModel
+from decision.processing import LETTERS, DecisionProcessor
+from decision.training.common import evaluate_decisions, fit_temperature
 from decision.utils import log, model_name_for
-
-
-def fit_temperature(rows):
-    """Fit one softmax temperature on hard-label rows by minimizing cross-entropy."""
-    hard = [row for row in rows if row["hard"]]
-    if not hard:
-        raise ValueError("no hard calibration targets")
-    logits = torch.full((len(hard), len(LETTERS)), -1e4)
-    labels = torch.tensor([max(range(len(row["target"])), key=row["target"].__getitem__) for row in hard])
-    for i, row in enumerate(hard):
-        logits[i, :len(row["logits"])] = torch.tensor(row["logits"])
-    log_temperature = torch.tensor(0., requires_grad=True)
-    optimizer = torch.optim.LBFGS([log_temperature], lr=0.1, max_iter=100)
-    def closure():
-        optimizer.zero_grad()
-        loss = torch.nn.functional.cross_entropy(logits / log_temperature.exp().clamp(0.05, 20), labels)
-        loss.backward()
-        return loss
-    optimizer.step(closure)
-    return float(log_temperature.exp().clamp(0.05, 20).detach()), len(hard)
 
 
 def parse_args(argv=None):
@@ -64,24 +44,24 @@ def main():
     base_name = Path(config["base"]).name
     base_model_id = args.base_model_id or (f"Qwen/{base_name}" if base_name.startswith("Qwen3.5-") else config["base"])
     log("export_stage", stage="loading", run=str(run), model_name=model_name)
-    tokenizer = load_tokenizer(config["base"])
-    letters = letter_tokens(tokenizer, "cuda")
-    model = load_model(config["base"], str(run / "best"))
+    processor = DecisionProcessor.from_pretrained(config["base"])
+    processor.config.max_length = config["max_length"]
+    model = DecisionModel.from_pretrained(config["base"], adapter=run / "best")
+    letters = model.letter_tensor(processor)
     validation = torch.load(run / "validation_tokens.pt", weights_only=False)
     model.eval()
     probe = validation[:2]
     with torch.inference_mode():
-        adapter_logits, _ = forward_batch(model, tokenizer, letters, probe)
-    model = model.merge_and_unload(safe_merge=True).eval()
+        adapter_logits, _ = model.score_decisions(probe, processor, letters)
+    model = model.merge_adapter(safe_merge=True).eval()
     with torch.inference_mode():
-        merged_logits, _ = forward_batch(model, tokenizer, letters, probe)
+        merged_logits, _ = model.score_decisions(probe, processor, letters)
     delta = float((adapter_logits - merged_logits).abs().max())
     if not torch.isfinite(merged_logits).all() or not torch.equal(adapter_logits.argmax(-1), merged_logits.argmax(-1)):
         raise ValueError("merged model changed probe decisions")
     log("export_stage", stage="saving_merged_weights", out=str(out))
     out.mkdir(parents=True, exist_ok=False)
-    model.save_pretrained(out, safe_serialization=True)
-    tokenizer.save_pretrained(out)
+    model.save_pretrained(out, processor)
     shutil.copyfile(Path(config["base"]) / "LICENSE", out / "LICENSE")
     (out / "training_config.json").write_text(json.dumps(config, indent=2))
     summary = {"source_run": str(run), "base_model": base_model_id, "model_name": model_name,
@@ -94,18 +74,18 @@ def main():
     # Evaluate the artifact reloaded from disk; calibrate its actual BF16 logits.
     del model
     torch.cuda.empty_cache()
-    model = load_model(str(out)).eval()
+    model = DecisionModel.from_pretrained(out).eval()
     with torch.inference_mode():
-        reloaded_logits, _ = forward_batch(model, tokenizer, letters, probe)
+        reloaded_logits, _ = model.score_decisions(probe, processor, letters)
     reload_delta = float((merged_logits - reloaded_logits).abs().max())
     if reload_delta > 1e-5:
         raise ValueError(f"save/reload logit mismatch: {reload_delta}")
     log("export_stage", stage="calibration", batch_size=args.batch_size, token_budget=args.token_budget)
-    calibration, audit = validation_items(config["data"], config["domains"], tokenizer, config["max_length"],
+    calibration, audit = validation_items(config["data"], config["domains"], processor,
                                            args.calibration_per_stratum, subset=(0,), seed=config["seed"])
-    _, rows = evaluate(model, tokenizer, letters, calibration, args.batch_size, args.token_budget)
+    _, rows = evaluate_decisions(model, processor, calibration, args.batch_size, args.token_budget)
     temperature, calibration_hard_n = fit_temperature(rows)
-    raw_metrics, val_rows = evaluate(model, tokenizer, letters, validation, args.batch_size, args.token_budget)
+    raw_metrics, val_rows = evaluate_decisions(model, processor, validation, args.batch_size, args.token_budget)
     report = {"temperature": temperature, "calibration_hard_n": calibration_hard_n, "calibration_partition": [0],
               "evaluation_partition": [1, 2, 3, 4], "before": raw_metrics,
               "after": summarize(val_rows, temperature), "sampling": audit,

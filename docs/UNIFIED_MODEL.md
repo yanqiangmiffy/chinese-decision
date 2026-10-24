@@ -4,7 +4,7 @@
 
 代码位置：
 
-- 单文件模型：[decision/unified.py](../decision/unified.py)
+- 单文件模型：[decision/modeling.py](../decision/modeling.py)（`DecisionModel.from_pretrained` / `save_pretrained`）、[decision/pipeline.py](../decision/pipeline.py)（`DecisionPipeline`）
 - 训练：[scripts/train_multitask_ddp.py](../scripts/train_multitask_ddp.py)
 - 回放与独立验证集：[scripts/build_replay_data.py](../scripts/build_replay_data.py)
 
@@ -36,7 +36,7 @@ model/
 **两种加载方式：**
 
 - `AutoModelForCausalLM.from_pretrained(model/)` 照常可用于分类。`span_head.*` 会被报告为未使用的权重，不影响结果。
-- 本项目的 `UnifiedModel(model/)` 只加载一次，就能同时提供两种读出。
+- 本项目的 `DecisionPipeline.from_pretrained(model/)` 只加载一次，就能同时提供两种读出。
 
 **已验证的往返测试**（`tests/test_unified.py`）：
 
@@ -76,28 +76,28 @@ model/
 
 任何输入其实都能同时算出两个读出的数值，但不属于该请求的那个读出没有意义，也不能拿两者的置信度做比较。所以“看哪个输出更可信就用哪个”行不通。
 
-`UnifiedModel.predict` 按请求字段路由：
+`DecisionPipeline` 按请求字段路由（`pipe(request)`）：
 
 - 带 `questions`（或 `question`）的请求走分类；
 - 带 `types` 的请求走抽取；
 - 两者都带，或两者都没有，会直接报错。
 
 ```python
-from decision.unified import UnifiedModel
+from decision import DecisionPipeline
 
-model = UnifiedModel("runs/cj-ie-0.8b-v2/model")
-model.predict({"state": "会议改到明天下午三点。",
+pipe = DecisionPipeline.from_pretrained("runs/cj-ie-0.8b-v2/model")
+pipe({"state": "会议改到明天下午三点。",
                "questions": {"q": {"type": "choice", "instructions": "这条消息通知了什么变化？",
                                    "criteria": {"A": "会议时间", "B": "会议地点", "C": "参会人员"}}}})
 # {"task": "decision", "answers": {"q": {"A": 0.97, "B": 0.02, "C": 0.01}}}
-model.predict({"text": "华为公司董事长梁华在深圳会见了腾讯游戏负责人。",
+pipe({"text": "华为公司董事长梁华在深圳会见了腾讯游戏负责人。",
                "types": {"人名": "人物的姓名", "公司": "企业名称", "地址": "具体地点"}})
 # {"task": "extraction", "entities": [{"text": "华为公司", "label": "公司", "start": 0, "end": 4, "score": ...}, ...]}
 ```
 
 **“根据预测来选输出”真正适用的是级联：**先用分类得到结果，再据此决定抽取什么。
 
-- **意图 + 槽位**（`decision/slots.py` 的 `SlotFiller`）：先判断意图，再只抽这个意图的槽位。
+- **意图 + 槽位**（`SlotFillingPipeline`）：先判断意图，再只抽这个意图的槽位。
 - **事件**：先判断句子里有哪些事件类型（`ee_type`），再对每个类型抽取触发词和论元（`ee_argument`）。
 
 如果入口是一句自然语言，而不是结构化请求，可以先加一道“任务路由”选择题，例如“这个请求要分类、抽取还是别的”。这道题本身也由同一个模型的分类读出回答，仍然是同一份权重。

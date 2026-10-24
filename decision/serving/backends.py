@@ -4,7 +4,7 @@ from pathlib import Path
 
 from transformers import AutoTokenizer
 
-from .schema import LETTERS
+from ..configuration import LETTERS
 
 
 def candidate_probabilities(logits, temperature):
@@ -25,24 +25,25 @@ class TransformersBackend:
 
     def __init__(self, base, adapter=None, device="cuda", threads=8):
         import torch
-        from .model import letter_tokens, load_model, load_tokenizer
+        from ..modeling import DecisionModel
+        from ..processing import DecisionProcessor
 
         if threads < 1:
             raise ValueError("threads must be positive")
         torch.set_num_threads(threads)
-        self.tokenizer = load_tokenizer(base)
-        self.model = load_model(base, adapter, device=device).eval()
-        self.letters = letter_tokens(self.tokenizer, self.model.device)
+        self.processor = DecisionProcessor.from_pretrained(base)
+        self.tokenizer = self.processor.tokenizer
+        self.model = DecisionModel.from_pretrained(base, adapter=adapter, device=device).eval()
+        self.letters = self.model.letter_tensor(self.processor)
         self.device = str(self.model.device)
         self.max_length = None
 
     def logits(self, ids, count):
         import torch
-        from .model import forward_batch
 
         with torch.inference_mode():
-            values, _ = forward_batch(self.model, self.tokenizer, self.letters,
-                                      [{"input_ids": ids, "target": [0.] * count}])
+            values, _ = self.model.score_decisions([{"input_ids": ids, "target": [0.] * count}], self.processor,
+                                                   self.letters)
         return values[0, :count].cpu().tolist()
 
     def close(self):

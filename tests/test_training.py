@@ -5,7 +5,7 @@ from unittest import mock
 
 import torch
 
-from decision.training import evaluate, replace_directory, with_last
+from decision.training.common import evaluate_decisions, replace_directory, with_last
 from scripts.train import parse_args, resume_conflicts, run_config
 
 # Keys and values of the released run's config.json. --resume compares every key, so
@@ -40,14 +40,16 @@ class TrainingHelperTests(unittest.TestCase):
         items = [{"input_ids": [1] * n, "target": [1., 0.], "domain": "general", "kind": "noul",
                   "source": "s", "hard": True, "case_id": str(n)} for n in (50, 10, 30, 20)]
         seen = []
-        def forward(model, tokenizer, letters, batch):
+
+        def score(batch, processor, letters):
             seen.append([e["case_id"] for e in batch])
             return torch.tensor([[2., 0.]] * len(batch)), None
-        with mock.patch("decision.training.forward_batch", forward):
-            metrics, rows = evaluate(mock.Mock(), None, None, items, batch_size=2, token_budget=1000)
+        model = mock.Mock(training=True, score_decisions=score)
+        metrics, rows = evaluate_decisions(model, mock.Mock(), items, batch_size=2, token_budget=1000)
         self.assertEqual(seen, [["10", "20"], ["30", "50"]])
         self.assertEqual(metrics["all"]["accuracy"], 1.)
         self.assertEqual([row["logits"] for row in rows], [[2., 0.]] * 4)
+        model.train.assert_called_with(True)          # the previous mode comes back
 
 
 class ResumeCompatibilityTests(unittest.TestCase):

@@ -2,8 +2,8 @@ import json
 import unittest
 from pathlib import Path
 
-from decision.api import build_answer, check_response
-from decision.schema import options_for
+from decision.serving.api import build_answer, check_response
+from decision.processing import options_for
 
 PAYLOAD = json.loads((Path(__file__).resolve().parents[1] / "examples/request.json").read_text(encoding="utf-8"))
 PROBABILITIES = {"urgent": [.2, .8], "department": [.7, .2, .1], "frustration": [.1, .3, .6]}

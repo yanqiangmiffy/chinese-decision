@@ -2,8 +2,8 @@ import sys
 import unittest
 from pathlib import Path
 
-from decision.schema import examples_for
-from decision.slots import align, decision_case, extraction_row, load_schema
+from decision.processing import examples_for
+from decision.data.slots import align, decision_case, extraction_row, load_schema
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from evaluate_slots import score  # noqa: E402

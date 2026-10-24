@@ -19,14 +19,14 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from peft import LoraConfig, TaskType, get_peft_model
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from decision.data import DOMAINS, FULL_TRAIN_DECISIONS, prepared_examples, token_batches, validation_items
-from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
-from decision.rlcd import rlcd_loss, rlcd_sigma
-from decision.schema import MAX_LENGTH, PROMPT_VERSION
-from decision.training import LORA_TARGETS, evaluate, replace_directory, with_last
+from decision.data.batching import token_batches
+from decision.data.cj import DOMAINS, FULL_TRAIN_DECISIONS, prepared_examples, validation_items
+from decision.modeling import DecisionModel
+from decision.processing import MAX_LENGTH, PROMPT_VERSION, DecisionProcessor
+from decision.training.common import evaluate_decisions, replace_directory, with_last
+from decision.training.group_rlcd import rlcd_loss, rlcd_sigma
 from decision.utils import log
 
 # Stored in config.json. --resume compares every config key, so renaming or adding
@@ -127,24 +127,27 @@ def main():
         else:
             cfg.write_text(json.dumps(config, indent=2))
     dist.barrier()
-    tokenizer = load_tokenizer(args.base)
-    letters = letter_tokens(tokenizer, device)
+    processor = DecisionProcessor.from_pretrained(args.base)
+    processor.config.max_length = args.max_length
+    tokenizer = processor.tokenizer
+    letters = torch.tensor(processor.letter_ids, device=device)
     val_path = out / "validation_tokens.pt"
     if rank == 0 and not val_path.exists():
-        val, audit = validation_items(args.data, DOMAINS, tokenizer, args.max_length, args.val_per_stratum, seed=args.seed)
+        val, audit = validation_items(args.data, DOMAINS, processor, args.val_per_stratum, seed=args.seed)
         torch.save(val, val_path)
         (out / "validation_sampling.json").write_text(json.dumps(audit, indent=2))
     dist.barrier()
     val = torch.load(val_path, weights_only=False)
-    core = load_model(args.base, str(out / "last") if args.resume else None, trainable=args.resume, device=device)
+    decision_model = DecisionModel.from_pretrained(args.base, adapter=out / "last" if args.resume else None,
+                                                   trainable=args.resume, device=device)
     if rank == 0 and not args.resume:
-        metrics, _ = evaluate(core, tokenizer, letters, val, VALIDATION_BATCH_SIZE, VALIDATION_TOKEN_BUDGET)
+        metrics, _ = evaluate_decisions(decision_model, processor, val, VALIDATION_BATCH_SIZE, VALIDATION_TOKEN_BUDGET)
         (out / "baseline.json").write_text(json.dumps(metrics, indent=2))
         log("baseline", metrics=metrics["all"], validation_n=len(val))
     dist.barrier()
     if not args.resume:
-        core = get_peft_model(core, LoraConfig(r=args.lora_r, lora_alpha=args.lora_r * 2, lora_dropout=.05,
-                                               task_type=TaskType.CAUSAL_LM, target_modules=LORA_TARGETS))
+        decision_model.enable_lora(r=args.lora_r)
+    core = decision_model.backbone
     core.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     core.enable_input_require_grads()
     model = DDP(core, device_ids=[local_rank], output_device=local_rank, gradient_as_bucket_view=True,
@@ -218,7 +221,8 @@ def main():
     def validation():
         nonlocal best
         if rank == 0:
-            metrics, _ = evaluate(core, tokenizer, letters, val, VALIDATION_BATCH_SIZE, VALIDATION_TOKEN_BUDGET)
+            metrics, _ = evaluate_decisions(decision_model, processor, val, VALIDATION_BATCH_SIZE,
+                                            VALIDATION_TOKEN_BUDGET)
             log("validation", step=step, metrics=metrics["all"])
             (out / "latest_metrics.json").write_text(json.dumps(metrics, indent=2))
             score = metrics["all"]["distribution_nll"]
@@ -244,8 +248,8 @@ def main():
         stream = prepared_examples(args.prepared_data, DOMAINS, args.seed + epoch, last_stream_stats)
         if args.debug_examples:
             stream = itertools.islice(stream, args.debug_examples)
-        batches = token_batches(stream, tokenizer, args.max_length, args.global_batch_size, args.token_budget,
-                                args.seed + epoch, last_stream_stats, pool_size=args.pool_size)
+        batches = token_batches(stream, processor, args.global_batch_size, args.token_budget, args.seed + epoch,
+                                last_stream_stats, pool_size=args.pool_size)
         optimizer.zero_grad(set_to_none=True)
         batches_done = 0
         for batch_index, (global_batch, last_batch) in enumerate(with_last(batches)):
@@ -264,7 +268,7 @@ def main():
             will_step = accumulated + len(global_batch) >= args.global_batch_size or last_batch
             sync = contextlib.nullcontext() if will_step else model.no_sync()
             with sync:
-                logits, targets = forward_batch(model, tokenizer, letters, local_batch)
+                logits, targets = decision_model.score_decisions(local_batch, processor, letters, forward=model)
                 # Hard labels are one-hot special cases of the same distribution cross-entropy.
                 loss = -(targets * logits.log_softmax(-1)).sum(-1).mean()
                 if args.rlcd:

@@ -28,7 +28,7 @@
 ```
 
 - **分类**直接复用现有决策格式：状态、问题、候选项，读出字母分布，无需新参数。
-- **抽取**沿用 CalOn 的类型化决策：对每个候选跨度，在“不是实体”和各类型之间做一次 softmax。跨度向量由首 token、尾 token、下一个 token、均值和宽度组成；类型向量从输入中的“类型名：描述”池化得到。代码见 [decision/extraction.py](../decision/extraction.py)。
+- **抽取**沿用 CalOn 的类型化决策：对每个候选跨度，在“不是实体”和各类型之间做一次 softmax。跨度向量由首 token、尾 token、下一个 token、均值和宽度组成；类型向量从输入中的“类型名：描述”池化得到。代码见 [decision/modeling.py](../decision/modeling.py)（`SpanHead`）与 [decision/processing.py](../decision/processing.py)（编码与解码）。
 - **回声布局。** CalOn 用双向编码器，而 Qwen3.5 是因果模型且包含线性注意力层。因此文本先按自然分词读一遍，再逐字重复一遍，跨度从重复的那份上取。
 
   这样做有两个好处。其一，自然分词会切开 9–14% 的实体边界（如“是三”“在西”“集团的”），逐字副本让每个字符边界都成为 token 边界。其二，重复副本中的每个位置都已看过整句，相当于给因果模型补上了右侧上下文。
@@ -106,7 +106,7 @@
    - 训练后重新拟合温度。
 2. **零样本类型：** 加入多类型数据（ie_collections 里的 B2NERD 有数百种中文实体类型），并在训练中打乱、替换或匿名化类型名，迫使跨度头读取类型描述。
 3. **扩大规模：** 使用 CLUENER 和人民日报全量数据，并加入 MSRA、Weibo；再接入关系抽取（DuIE）与事件论元（DuEE）。CalOn 的关系头结构可以沿用。
-4. **部署：** 跨度头不在 GGUF 中，抽取目前只能走 PyTorch（`SpanExtractor`）。
+4. **部署：** 跨度头不在 GGUF 中，抽取目前只能走 PyTorch（`DecisionPipeline`）。
 
 ## 意图 + 字段抽取（槽位填充）
 
@@ -165,11 +165,11 @@ python scripts/evaluate_slots.py --run runs/mt-slots-500
 ```
 
 ```python
-from decision.extraction import SpanExtractor
-from decision.slots import SlotFiller, load_schema
+from decision import DecisionPipeline, SlotFillingPipeline
+from decision.data.slots import load_schema
 
-filler = SlotFiller(SpanExtractor.from_run("models/chinese-decision-0.8b", "runs/mt-slots-500"),
-                    load_schema("examples/slot_filling/schema.json"))
+filler = SlotFillingPipeline(DecisionPipeline.from_run("models/chinese-decision-0.8b", "runs/mt-slots-500"),
+                             load_schema("examples/slot_filling/schema.json"))
 result = filler("打开空调")
 {"query": "Q: 打开空调", "response": {result["intent"]: result["slots"]}}
 ```
@@ -191,10 +191,10 @@ CUDA_VISIBLE_DEVICES=2 .venv/bin/python scripts/train_multitask.py --out runs/mt
 推理：
 
 ```python
-from decision.extraction import SpanExtractor
+from decision import DecisionPipeline
 
-extractor = SpanExtractor.from_run("models/chinese-decision-0.8b", "runs/mt-joint")
-extractor.extract("华为公司董事长梁华在深圳会见了腾讯游戏负责人。",
+pipe = DecisionPipeline.from_run("models/chinese-decision-0.8b", "runs/mt-joint")
+pipe.extract("华为公司董事长梁华在深圳会见了腾讯游戏负责人。",
                   {"人名": "人物的姓名", "公司": "企业名称", "地址": "具体地点", "职位": "职务与头衔"})
 # [{"text": "华为公司", "label": "公司", "start": 0, "end": 4, "score": 0.96}, ...]
 ```

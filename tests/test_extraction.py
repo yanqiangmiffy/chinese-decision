@@ -2,9 +2,10 @@ import unittest
 
 import torch
 
-from decision.extraction import (ExtractionEncoder, SpanHead, SpanLoss, backbone_hidden, collate_extraction, decode,
-                                 entity_metrics, text_units)
-from decision.rlcd_loss import RLCDLossConfig
+from decision.losses import RLCDLossConfig, SpanLoss
+from decision.metrics import entity_metrics
+from decision.modeling import DecisionModel, SpanHead
+from decision.processing import DecisionProcessor, text_units
 from test_model import tiny_qwen
 
 TYPES = [{"key": "name", "name": "人名", "description": "人物姓名"}, {"key": "loc", "name": "地名", "description": ""}]
@@ -26,14 +27,18 @@ def row(text, entities=()):
             "entities": [{"start": s, "end": e, "label": label} for s, e, label in entities]}
 
 
+def processor(**kwargs):
+    return DecisionProcessor(CharTokenizer(), **kwargs)
+
+
 class EncodingTests(unittest.TestCase):
     def test_units_split_cjk_characters_and_keep_ascii_words(self):
         text = "我在NBA打球2010年"
         self.assertEqual([text[s:e] for s, e in text_units(text)], ["我", "在", "NBA", "打", "球", "2010", "年"])
 
     def test_gold_spans_map_to_candidates_or_count_as_unrepresented(self):
-        encoder = ExtractionEncoder(CharTokenizer(), max_span_units=3)
-        item = encoder.encode(row("张三在NBA北京市海淀", [(0, 2, "name"), (4, 6, "loc"), (6, 11, "loc")]))
+        item = processor(max_span_units=3).encode_extraction(
+            row("张三在NBA北京市海淀", [(0, 2, "name"), (4, 6, "loc"), (6, 11, "loc")]))
         # "BA" cuts an ASCII unit and 北京市海淀 is five units wide: neither is a candidate.
         self.assertEqual(item["unrepresented"], 2)
         (k, labels), = item["gold"].items()
@@ -42,7 +47,7 @@ class EncodingTests(unittest.TestCase):
     def test_unit_tokens_point_at_the_span_copy(self):
         tokenizer = CharTokenizer()
         for echo in (True, False):
-            item = ExtractionEncoder(tokenizer, echo=echo).encode(row("张三去了NBA"))
+            item = processor(echo=echo).encode_extraction(row("张三去了NBA"))
             ids, text = item["input_ids"], item["text"]
             for (start, end), (first, last) in zip(item["units"], item["unit_tokens"]):
                 self.assertEqual(ids[first:last + 1], tokenizer.encode(text[start:end]))
@@ -51,28 +56,34 @@ class EncodingTests(unittest.TestCase):
 
     def test_type_spans_cover_name_and_description(self):
         tokenizer = CharTokenizer()
-        item = ExtractionEncoder(tokenizer).encode(row("张三"))
+        item = processor().encode_extraction(row("张三"))
         (s0, e0), (s1, e1) = item["type_spans"]
         self.assertEqual(item["input_ids"][s0:e0], tokenizer.encode("人名：人物姓名"))
         self.assertEqual(item["input_ids"][s1:e1], tokenizer.encode("地名"))
+
+    def test_inference_rows_accept_names_or_descriptions(self):
+        self.assertEqual(DecisionProcessor.extraction_row("x", ["人名"])["types"],
+                         [{"key": "人名", "name": "人名", "description": ""}])
+        self.assertEqual(DecisionProcessor.extraction_row("x", {"人名": "姓名"})["types"][0]["description"], "姓名")
 
 
 class HeadTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.model = tiny_qwen()
-        cls.encoder = ExtractionEncoder(CharTokenizer(), max_span_units=4)
+        cls.processor = processor(max_span_units=4)
         torch.manual_seed(0)
-        cls.head = SpanHead(cls.model.config.hidden_size, max_span_units=4, inner=32, out=16).eval()
+        backbone = tiny_qwen()
+        cls.model = DecisionModel(backbone, span_head=SpanHead(backbone.config.hidden_size, max_span_units=4,
+                                                               inner=32, out=16)).eval()
 
     def utilities(self, items):
-        batch = collate_extraction(items, CharTokenizer.pad_token_id)
+        batch = self.processor.collate_extraction(items)
         with torch.inference_mode():
-            return self.head(backbone_hidden(self.model, batch), batch), batch
+            return self.model.span_utilities(batch), batch
 
     def test_left_padding_does_not_change_span_utilities(self):
-        short = self.encoder.encode(row("张三去北京", [(0, 2, "name")]))
-        long = self.encoder.encode(row("李四昨天从上海飞到了北京市", [(10, 13, "loc")]))
+        short = self.processor.encode_extraction(row("张三去北京", [(0, 2, "name")]))
+        long = self.processor.encode_extraction(row("李四昨天从上海飞到了北京市", [(10, 13, "loc")]))
         alone, _ = self.utilities([short])
         together, batch = self.utilities([long, short])
         torch.testing.assert_close(together[len(long["cands"]):], alone, atol=1e-4, rtol=1e-4)
@@ -80,11 +91,11 @@ class HeadTests(unittest.TestCase):
         torch.testing.assert_close(batch.targets.sum(-1), torch.ones(batch.targets.shape[0]))
 
     def test_span_loss_trains_the_head_and_weights_none_spans(self):
-        item = self.encoder.encode(row("张三去北京", [(0, 2, "name"), (3, 5, "loc")]))
-        batch = collate_extraction([item], CharTokenizer.pad_token_id)
+        item = self.processor.encode_extraction(row("张三去北京", [(0, 2, "name"), (3, 5, "loc")]))
+        batch = self.processor.collate_extraction([item])
         with torch.no_grad():
-            hidden = backbone_hidden(self.model, batch)
-        head = SpanHead(self.model.config.hidden_size, max_span_units=4, inner=32, out=16)
+            hidden = self.model.hidden_states(batch.input_ids, batch.attention_mask)
+        head = SpanHead(self.model.hidden_size, max_span_units=4, inner=32, out=16)
         utilities = head(hidden, batch)
         plain, _ = SpanLoss(RLCDLossConfig(rlcd_weight=0.0))(utilities, batch)
         expected = -(batch.targets * utilities.log_softmax(-1)).sum(-1).mean()
@@ -93,9 +104,17 @@ class HeadTests(unittest.TestCase):
         weighted.backward()
         self.assertTrue(all(p.grad is not None and torch.isfinite(p.grad).all() for p in head.parameters()))
 
+    def test_predictions_come_back_in_input_order(self):
+        items = [self.processor.encode_extraction(row(text)) for text in ("李四昨天从上海飞到了北京市", "张三")]
+        predictions = self.model.predict_spans(items, self.processor, threshold=0.0)
+        self.assertEqual(len(predictions), 2)
+        for item, found in zip(items, predictions):
+            self.assertTrue(all(0 <= s < e <= len(item["text"]) for s, e, _, _ in found))
+
 
 class DecodeTests(unittest.TestCase):
     def test_flat_decoding_keeps_the_more_probable_of_overlapping_spans(self):
+        decode = DecisionProcessor.decode_spans
         item = {"cands": [(0, 1), (1, 2), (3, 3)], "units": [(0, 1), (1, 2), (2, 3), (3, 4)], "types": ["name", "loc"]}
         utilities = torch.tensor([[0., 3., 0.], [0., 0., 5.], [2., 0., 0.]])
         self.assertEqual([p[:3] for p in decode(item, utilities)], [(1, 3, "loc")])

@@ -2,7 +2,7 @@
 
 Reads the local copies in G:/pretrained_models/datasets/ie_collections (see its README_数据集总索引.md):
 32 NER sources (10 standalone corpora and 22 B2NERD_all subsets), DuIE, CMeIE, FinRE, SanWen,
-DuEE, FewFC and ChFinAnn. decision/iedata/ turns each record into views:
+DuEE, FewFC and ChFinAnn. decision/data/ie/ turns each record into views:
 
     extraction/{task}_{source}.{split}.jsonl  span rows (decision/extraction.py), one file per source
     decision/{split}.cases.jsonl             CJ cases; `_meta.source_family` is "<task>:<source>"
@@ -39,9 +39,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from decision.iedata import event, ner, relation  # noqa: E402
-from decision.iedata.common import SPLITS, norm, pieces, stable_hash  # noqa: E402
-from decision.schema import examples_for  # noqa: E402
+from decision.data.ie import event, ner, relation  # noqa: E402
+from decision.data.ie.common import SPLITS, norm, pieces, stable_hash  # noqa: E402
+from decision.processing import examples_for  # noqa: E402
 
 # Per-source record caps that differ from the defaults.
 CAPS = {"duie": {"train": 100000}, "chfinann": {"train": 8000, "dev": 300, "test": 1000}}

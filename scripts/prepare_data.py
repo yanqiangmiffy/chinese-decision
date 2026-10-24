@@ -8,7 +8,7 @@ import json
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from decision.data import prepare_domain
+from decision.data.cj import prepare_domain
 from decision.utils import log, sha256
 
 

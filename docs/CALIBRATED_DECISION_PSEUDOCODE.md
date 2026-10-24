@@ -51,7 +51,7 @@ L_rlcd = -mean_g A_g * log N(z~_g; z, sigma^2 I)      # d/dz log N = (z~_g - z) 
 
 ```python
 import torch
-from decision.rlcd_loss import RLCDLoss, RLCDLossConfig
+from decision.losses import RLCDLoss, RLCDLossConfig
 
 logits = torch.tensor([[1.2, 0.3, 0.0], [0.2, 0.7, -0.4]], requires_grad=True)
 mask = torch.tensor([[True, True, False], [True, True, True]])
@@ -120,7 +120,7 @@ def score_candidates(model, batch):
 
 ```python
 from dataclasses import replace
-from decision.rlcd_loss import RLCDLoss, RLCDLossConfig, linear_schedule
+from decision.losses import RLCDLoss, RLCDLossConfig, linear_schedule
 
 config = RLCDLossConfig(estimator="reinforce", num_samples=8, rlcd_weight=1.0, reduction="sum")
 sigma_start, sigma_end = 0.4, 0.1

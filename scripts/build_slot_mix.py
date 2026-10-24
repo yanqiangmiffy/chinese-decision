@@ -13,7 +13,7 @@ import shutil
 from collections import Counter
 from pathlib import Path
 
-from decision.slots import decision_case, extraction_row, load_schema
+from decision.data.slots import decision_case, extraction_row, load_schema
 
 
 def read(path):

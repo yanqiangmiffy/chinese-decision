@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from decision.api import check_response
-from decision.inference import candidate_probabilities
+from decision.serving.api import check_response
+from decision.serving.backends import candidate_probabilities
 from scripts.serve import create_app
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -1,4 +1,4 @@
-"""Bounded-memory CJ-Dataset reading, re-sharding, mixing, and token batching.
+"""Bounded-memory CJ-Dataset reading, re-sharding, mixing, and validation sampling.
 
 Original train/validation files stay separate; validation is never mixed into training.
 """
@@ -10,7 +10,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from .schema import examples_for, partition
+from ..processing import examples_for, partition
 
 DOMAINS = ("general", "medical", "legal", "finance")
 FULL_TRAIN_DECISIONS = 13_048_000
@@ -138,74 +138,7 @@ def prepared_examples(root, domains, seed, stats, buffer_size=256):
             raise ValueError(f"prepared stratum has fewer rows than its manifest: {entries[i]['path']}")
 
 
-def encode(example, tokenizer, max_length, rng=None, stats=None):
-    prompt, target = example.render(tokenizer, rng)
-    ids = tokenizer.encode(prompt, add_special_tokens=False)
-    if len(ids) > max_length:
-        if stats is not None:
-            stats[f"{example.domain}:overlength"] += 1
-        return None
-    return {"input_ids": ids, "target": target, "kind": example.kind, "domain": example.domain,
-            "source": example.source, "case_id": example.case_id, "hard": example.hard}
-
-
-def greedy_batches(items, batch_size, token_budget):
-    """Fill length-sorted items in order until the row or (unpadded) token limit is reached."""
-    batches, batch = [], []
-    for item in items:
-        if batch and (len(batch) >= batch_size or (len(batch) + 1) * len(item["input_ids"]) > token_budget):
-            batches.append(batch)
-            batch = []
-        batch.append(item)
-    if batch:
-        batches.append(batch)
-    return batches
-
-
-def shape_batches(items, batch_size, token_budget):
-    """Cut length-sorted items into power-of-two batches whose 64-padded size fits the budget.
-
-    Few distinct (rows, padded length) shapes keep compiled kernels and memory stable.
-    """
-    batches, position = [], 0
-    while position < len(items):
-        capacity = min(batch_size, len(items) - position)
-        size = 1 << (capacity.bit_length() - 1)
-        while size > 1:
-            padded = ((len(items[position + size - 1]["input_ids"]) + 63) // 64) * 64
-            if size * padded <= token_budget:
-                break
-            size //= 2
-        batches.append(items[position:position + size])
-        position += size
-    return batches
-
-
-def token_batches(stream, tokenizer, max_length, batch_size, token_budget, seed, stats, pool_size=128):
-    """Encode a stream in pools, cut each pool into shape batches, and shuffle them.
-
-    One seeded generator drives both candidate shuffling and batch order, so a resumed
-    run can replay the stream exactly up to its saved batch cursor.
-    """
-    rng, pool = random.Random(seed), []
-    def flush(items):
-        items.sort(key=lambda e: len(e["input_ids"]))
-        batches = shape_batches(items, batch_size, token_budget)
-        rng.shuffle(batches)
-        return batches
-    for example in stream:
-        item = encode(example, tokenizer, max_length, rng, stats)
-        if item is None:
-            continue
-        pool.append(item)
-        if len(pool) >= pool_size:
-            yield from flush(pool)
-            pool = []
-    if pool:
-        yield from flush(pool)
-
-
-def validation_items(root, domains, tokenizer, max_length, per_stratum=100, subset=(1, 2, 3, 4), seed=42):
+def validation_items(root, domains, processor, per_stratum=100, subset=(1, 2, 3, 4), seed=42):
     """Reservoir samples every domain/type over the entire released validation split."""
     rng, reservoirs, seen, stats = random.Random(seed), {}, Counter(), Counter()
     for domain in domains:
@@ -219,6 +152,5 @@ def validation_items(root, domains, tokenizer, max_length, per_stratum=100, subs
                 i = rng.randrange(seen[key])
                 if i < per_stratum:
                     bucket[i] = example
-    chosen = [encode(example, tokenizer, max_length, stats=stats)
-              for bucket in reservoirs.values() for example in bucket]
+    chosen = [processor.encode_example(example, stats=stats) for bucket in reservoirs.values() for example in bucket]
     return [item for item in chosen if item is not None], dict(stats)

@@ -2,7 +2,7 @@
 
 Each call asks for a batch of utterances of one intent, with a random phrasing style and random
 hint words for diversity. Every returned item is validated: slot keys must belong to the intent,
-values must be verbatim, non-overlapping substrings (decision.slots.align), and queries are
+values must be verbatim, non-overlapping substrings (decision.data.slots.align), and queries are
 deduplicated and kept out of the `--exclude` test files.
 
     python scripts/synthesize_slot_data.py --endpoint http://localhost:8002/v1 --model Qwen3-32B \\
@@ -17,7 +17,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from decision.slots import align, load_schema
+from decision.data.slots import align, load_schema
 
 STYLES = [
     "口语化、随意，像对智能音箱说话", "礼貌、完整的句子", "非常简短的命令", "带语气词或感叹，如“哎”“热死了”“好冷啊”",

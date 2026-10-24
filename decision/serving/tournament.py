@@ -14,7 +14,7 @@ Nothing here runs the model, so both servers share it:
 import random
 
 from .api import build_answer
-from .schema import LETTERS
+from ..configuration import LETTERS
 
 # Largest candidate count in CJ-Dataset; letters beyond it were never trained as answers.
 DEFAULT_GROUP_SIZE = 16

@@ -5,12 +5,12 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-from decision.iedata.common import (Raw, bio_entities, carve, choice_case, chunks, join_tokens, locate, mark,
+from decision.data.ie.common import (Raw, bio_entities, carve, choice_case, chunks, join_tokens, locate, mark,
                                     window_rows)
-from decision.iedata.event import FewFC
-from decision.iedata.ner import b2nerd_types, boson_records, merged_labels, readable
-from decision.iedata.relation import FinRE, TripleSource
-from decision.schema import examples_for
+from decision.data.ie.event import FewFC
+from decision.data.ie.ner import b2nerd_types, boson_records, merged_labels, readable
+from decision.data.ie.relation import FinRE, TripleSource
+from decision.processing import examples_for
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from build_ie_data import leakage_filter  # noqa: E402

@@ -18,9 +18,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 import decision.metrics
-from decision.data import DOMAINS, shape_batches
+from decision.data.batching import shape_batches
+from decision.data.cj import DOMAINS
 from decision.metrics import BenchmarkMetrics
-from decision.schema import PROMPT_VERSION, examples_for, group_key
+from decision.processing import PROMPT_VERSION, examples_for, group_key
 from decision.utils import log, sha256, write_json
 
 
@@ -127,7 +128,8 @@ def main():
             raise ValueError(f"benchmark file hash/size mismatch: {path}")
         verified.append({"domain": domain, "sha256": entry["sha256"], "bytes": entry["bytes"]})
     import torch
-    from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
+    from decision.modeling import DecisionModel
+    from decision.processing import DecisionProcessor
     torch.set_num_threads(6)
     torch.manual_seed(args.seed)
     if torch.cuda.device_count() != 1:
@@ -162,13 +164,15 @@ def main():
             "kind": r["example"].kind, "line": r["line"], "parent_id": r["parent_id"]} for r in records]
     write_json(run / "quick_selected_ids.json", ids)
     sample_hash = sha256(run / "quick_selected_ids.json")
-    tokenizer = load_tokenizer(args.model or config["base"])
+    processor = DecisionProcessor.from_pretrained(args.model or config["base"])
+    tokenizer = processor.tokenizer
     quick_rows = encode_pool(records, tokenizer, config["max_length"])
     torch.save(quick_rows, run / "quick_tokens.pt")
-    model = (load_model(args.model) if args.model else load_model(config["base"], str(run / "adapter"))).eval()
-    letters = letter_tokens(tokenizer, "cuda")
+    model = (DecisionModel.from_pretrained(args.model) if args.model
+             else DecisionModel.from_pretrained(config["base"], adapter=run / "adapter")).eval()
+    letters = model.letter_tensor(processor)
     with torch.inference_mode():
-        forward_batch(model, tokenizer, letters, quick_rows[:2])
+        model.score_decisions(quick_rows[:2], processor, letters)
     torch.cuda.synchronize()
     log("model_ready", sample_n=len(quick_rows), sample_strata=strata,
         gpu_memory_gb=round(torch.cuda.memory_allocated() / 1e9, 3))
@@ -185,7 +189,7 @@ def main():
                 for batch in shape_batches(sorted(pool, key=lambda row: len(row["input_ids"])),
                                            args.batch_size, args.token_budget):
                     with torch.inference_mode():
-                        logits, _ = forward_batch(model, tokenizer, letters, batch)
+                        logits, _ = model.score_decisions(batch, processor, letters)
                         if not torch.isfinite(logits).all().item():
                             raise FloatingPointError("non-finite benchmark logits")
                         values = (logits / temperature).log_softmax(-1).cpu().tolist()
@@ -266,12 +270,12 @@ def main():
             # Warm this input shape once; measure input compilation through final probabilities.
             row = encode_pool([record], tokenizer, config["max_length"])
             with torch.inference_mode():
-                forward_batch(model, tokenizer, letters, row)
+                model.score_decisions(row, processor, letters)
             torch.cuda.synchronize()
             started = time.perf_counter()
             row = encode_pool([record], tokenizer, config["max_length"])
             with torch.inference_mode():
-                logits, _ = forward_batch(model, tokenizer, letters, row)
+                logits, _ = model.score_decisions(row, processor, letters)
                 probabilities = (logits[0, :len(row[0]["target"])] / temperature).softmax(-1).cpu().tolist()
             answer = dict(zip(row[0]["option_keys"], probabilities))
             if row[0]["kind"] == "score":

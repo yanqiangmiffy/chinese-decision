@@ -405,35 +405,55 @@ python scripts/serve.py --backend gguf --base models/chinese-decision-4b-gguf --
 ### Python 调用（0.8B 示例）
 
 ```python
-import json
-from pathlib import Path
+from decision import DecisionPipeline
 
-import torch
-from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
-from decision.schema import compile_prompt, options_for
-
-base = "models/chinese-decision-0.8b"  # 合并后的模型；也可用 load_model("models/Qwen3.5-0.8B", adapter="runs/cj-ddp/best")
-tokenizer = load_tokenizer(base)
-model = load_model(base).eval()
-letters = letter_tokens(tokenizer, "cuda")
-config = Path(base, "decision_config.json")
-temperature = json.loads(config.read_text())["temperature"] if config.exists() else 1.0
-
-state = "客户留言：付款后一直没有收到发票，我已经催了三次，今天必须拿到。"
-question = {
-    "type": "choice",
-    "instructions": "应该由哪个部门处理？",
-    "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"},
-}
-
-options = options_for(question)
-prompt = compile_prompt(tokenizer, state, question["instructions"], options)
-item = {"input_ids": tokenizer.encode(prompt, add_special_tokens=False), "target": [0.0] * len(options)}
-with torch.inference_mode():
-    logits, _ = forward_batch(model, tokenizer, letters, [item])
-probs = (logits[0, :len(options)] / temperature).softmax(-1).tolist()
-print({key: round(p, 4) for (key, _), p in zip(options, probs)})
+pipe = DecisionPipeline.from_pretrained("models/chinese-decision-0.8b")   # 本地目录或 Hub 仓库名
+answer = pipe({
+    "state": "客户留言：付款后一直没有收到发票，我已经催了三次，今天必须拿到。",
+    "questions": {"q": {
+        "type": "choice",
+        "instructions": "应该由哪个部门处理？",
+        "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"},
+    }},
+})
+print(answer)   # {"task": "decision", "answers": {"q": {"billing": 0.97, ...}}}，已按 decision_config.json 的温度校准
 ```
+
+带跨度头的模型（例如联合训练导出的 `runs/<run>/model`）用同一个对象做抽取：
+
+```python
+pipe({"text": "华为公司董事长梁华在深圳会见了腾讯游戏负责人。", "types": {"人名": "人物的姓名", "公司": "企业名称"}})
+# {"task": "extraction", "entities": [{"text": "华为公司", "label": "公司", "start": 0, "end": 4, "score": ...}, ...]}
+```
+
+任务由请求决定：带 `questions` 走分类，带 `types` 走抽取。更底层的接口与 transformers 的用法相同：
+
+| 类 | 作用 |
+|---|---|
+| `DecisionConfig` | `decision_config.json`：温度、提示版本、跨度头设置 |
+| `DecisionProcessor` | 提示编译、编码、填充、解码（两种任务） |
+| `DecisionModel` | 底座 + 可选跨度头；`from_pretrained` / `save_pretrained`（合并 LoRA，一份权重）、`enable_lora`、`score_decisions`、`predict_spans` |
+| `DecisionPipeline` | 请求级推理：`decide`、`extract`、`__call__` |
+
+训练中的 adapter 也可以直接加载：`DecisionModel.from_pretrained("models/Qwen3.5-0.8B", adapter="runs/cj-ddp/best")`；联合训练的运行目录用 `DecisionPipeline.from_run(base, run)`。
+
+代码结构：
+
+```text
+decision/
+  configuration.py   DecisionConfig / ExtractionConfig
+  processing.py      DecisionProcessor，CJ 题目格式，两种提示布局
+  modeling.py        DecisionModel，SpanHead
+  pipeline.py        DecisionPipeline，SlotFillingPipeline
+  losses.py          RLCDLoss，SpanLoss
+  metrics.py         验证、CJ-Bench 与抽取指标
+  data/              CJ-Dataset 读取与批处理、槽位记录、CJ-IE 构建（ie/）
+  training/          LoRA 目标、决策评估、温度拟合、分组 RLCD
+  serving/           HTTP 答案格式、Transformers / GGUF 后端、候选淘汰赛
+scripts/             训练、导出、评测、服务的命令行入口
+```
+
+`import decision` 不会加载 PyTorch，GGUF 的 CPU 服务仍只依赖 transformers。
 
 ### HTTP 服务
 

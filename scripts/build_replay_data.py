@@ -27,8 +27,8 @@ import random
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from decision.data import DOMAINS
-from decision.schema import partition
+from decision.data.cj import DOMAINS
+from decision.processing import partition
 
 DEFAULT_BUDGET = {"general": 200000, "medical": 100000, "legal": 0, "finance": 0}   # 0 = the whole domain
 

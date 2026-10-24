@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from scripts.finalize import parse_args
 from scripts.serve_gpu import Checkpoint
@@ -24,9 +24,7 @@ class ExportTests(unittest.TestCase):
             }
             for name, contents in metadata.items():
                 (Path(base) / name).write_text(json.dumps(contents), encoding="utf-8")
-            with patch("scripts.serve_gpu.load_tokenizer"), \
-                 patch("scripts.serve_gpu.load_model", return_value=MagicMock()), \
-                 patch("scripts.serve_gpu.letter_tokens"):
+            with patch("scripts.serve_gpu.DecisionProcessor"), patch("scripts.serve_gpu.DecisionModel"):
                 checkpoint = Checkpoint(base, None, "cuda")
             self.assertEqual(checkpoint.model_name, "chinese-decision-2b")
             self.assertEqual(checkpoint.describe()["step"], 4994)

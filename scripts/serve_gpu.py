@@ -42,18 +42,18 @@ import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from decision.api import build_answer
-from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
-from decision.schema import LETTERS, PROMPT_VERSION, compile_prompt, options_for
-from decision.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
-from decision.tournament import from_request as tournament_from
+from decision.serving.api import build_answer
+from decision.modeling import DecisionModel
+from decision.processing import LETTERS, PROMPT_VERSION, DecisionProcessor, compile_prompt, options_for
+from decision.serving.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
+from decision.serving.tournament import from_request as tournament_from
 from decision.utils import model_name_for
 
 MAX_LENGTH = 16384
 MAX_QUESTIONS = 64
 MAX_BATCH_REQUESTS = 512
 MAX_BATCH_QUESTIONS = 4096
-PAD_MULTIPLE = 64  # 与 decision.model.forward_batch 的 pad_to_multiple_of 一致
+PAD_MULTIPLE = 64  # 与 DecisionProcessor.pad_decisions 的 pad_to_multiple_of 一致
 IDLE_RELEASE_SECONDS = 20  # 空闲多久后释放缓存的显存
 
 
@@ -78,9 +78,10 @@ class Checkpoint:
     def __init__(self, base, adapter, device):
         started = time.perf_counter()
         self.base, self.adapter = str(base), str(adapter) if adapter else None
-        self.tokenizer = load_tokenizer(base)
-        self.model = load_model(base, adapter, device=device).eval()
-        self.letters = letter_tokens(self.tokenizer, device)
+        self.processor = DecisionProcessor.from_pretrained(base)
+        self.tokenizer = self.processor.tokenizer
+        self.model = DecisionModel.from_pretrained(base, adapter=adapter, device=device).eval()
+        self.letters = self.model.letter_tensor(self.processor)
         config = read_json(Path(base) / "decision_config.json", {}) or {}
         self.model_name = model_name_for(base, config)
         self.temperature = float(config.get("temperature", 1.0))
@@ -201,7 +202,7 @@ class Engine:
     def _forward(self, checkpoint, flat, chunk):
         started = time.perf_counter()
         batch = [{"input_ids": flat[i][2]["input_ids"], "target": [0.0] * flat[i][2]["k"]} for i in chunk]
-        logits, _ = forward_batch(checkpoint.model, checkpoint.tokenizer, checkpoint.letters, batch)
+        logits, _ = checkpoint.model.score_decisions(batch, checkpoint.processor, checkpoint.letters)
         logits = logits.cpu()
         elapsed = 1000 * (time.perf_counter() - started)
         length = padded(max(len(b["input_ids"]) for b in batch))

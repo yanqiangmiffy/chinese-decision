@@ -17,8 +17,8 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from decision.api import check_response
-from decision.schema import PROMPT_VERSION
+from decision.serving.api import check_response
+from decision.processing import PROMPT_VERSION
 from decision.utils import sha256
 
 ROOT = Path(__file__).resolve().parents[1]

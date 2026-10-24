@@ -9,8 +9,16 @@ import argparse
 import json
 from pathlib import Path
 
-from decision.extraction import SpanExtractor, entity_metrics
+from decision.metrics import entity_metrics
+from decision.pipeline import DecisionPipeline
 from decision.utils import log, write_json
+
+
+def load_pipeline(base, run, device):
+    """A training run's adapter and span head on `base`, or an exported model directory."""
+    if (Path(run) / "adapter").exists():
+        return DecisionPipeline.from_run(base, run, device)
+    return DecisionPipeline.from_pretrained(run, device=device)
 
 
 def main():
@@ -21,12 +29,12 @@ def main():
     parser.add_argument("--thresholds", default="0", help="comma-separated minimum entity probabilities")
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
-    extractor = SpanExtractor.from_run(args.base, args.run, args.device)
+    pipe = load_pipeline(args.base, args.run, args.device)
     result = {}
     for path in args.files:
         rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
         for threshold in map(float, args.thresholds.split(",")):
-            items, predictions = extractor.predict(rows, threshold)
+            items, predictions = pipe.predict_spans(rows, threshold)
             metrics = entity_metrics(items, predictions)
             result.setdefault(Path(path).stem, {})[f"threshold={threshold:g}"] = metrics
             log("extraction_eval", file=path, threshold=threshold, **metrics)

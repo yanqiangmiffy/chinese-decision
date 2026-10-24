@@ -5,7 +5,10 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-from decision.data import greedy_batches, prepare_domain, prepared_examples, shape_batches, token_batches
+from decision.configuration import DecisionConfig
+from decision.data.batching import greedy_batches, shape_batches, token_batches
+from decision.data.cj import prepare_domain, prepared_examples
+from decision.processing import DecisionProcessor
 
 
 def padded_size(batch):
@@ -37,8 +40,9 @@ class BatchingTests(unittest.TestCase):
             def encode(self, value, **kwargs):
                 return list(range(int(value)))
         def batches():
-            return list(token_batches(iter(Item(i) for i in range(60)), Tokenizer(), 2048, 32, 4096,
-                                      42, Counter(), pool_size=64))
+            processor = DecisionProcessor(Tokenizer(), DecisionConfig(max_length=2048))
+            return list(token_batches(iter(Item(i) for i in range(60)), processor, 32, 4096, 42, Counter(),
+                                      pool_size=64))
         a, b = batches(), batches()
         self.assertEqual({e["case_id"] for batch in a for e in batch}, {str(i) for i in range(60)})
         self.assertEqual(sum(len(batch) for batch in a), 60)

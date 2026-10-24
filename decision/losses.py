@@ -1,4 +1,4 @@
-"""RLCD loss for calibrated candidate distributions.
+"""Training losses: RLCD for calibrated candidate distributions, and `SpanLoss` for the span head.
 
 Reference PyTorch implementation of the RLCD-style objective used by public
 reproductions (Chinese-Jev, CalOn, OpenJev-RLCD). It is not TypeSafe's unpublished
@@ -65,6 +65,7 @@ __all__ = [
     "RLCDLoss",
     "RLCDLossConfig",
     "RLCDLossOutput",
+    "SpanLoss",
     "leave_one_out_advantages",
     "linear_schedule",
     "logarithmic_score",
@@ -317,6 +318,28 @@ def _check_inputs(logits: Tensor, targets: Tensor, mask: Tensor, ordinal_mask: T
         raise ValueError("targets must be non-negative and zero on padded candidates")
     if not torch.allclose(targets.sum(-1), torch.ones_like(targets[:, 0]), atol=1e-4, rtol=0):
         raise ValueError("each target distribution must sum to 1")
+
+
+
+class SpanLoss:
+    """`RLCDLoss` per candidate span, with "none" spans down-weighted by `none_weight`.
+
+    Down-weighting multiplies the trained none probability by `none_weight`; `none_shift` gives the
+    log(1 / none_weight) added to the none utility at inference to undo it.
+    """
+
+    def __init__(self, config: RLCDLossConfig, none_weight: float = 1.0):
+        self.loss_fn = RLCDLoss(replace(config, reduction="none"))
+        self.none_weight = none_weight
+
+    @property
+    def none_shift(self) -> float:
+        return -torch.log(torch.tensor(self.none_weight)).item()
+
+    def __call__(self, utilities: Tensor, batch, sigma: float | None = None):
+        out = self.loss_fn(utilities, batch.targets, batch.mask, sigma=sigma)
+        weight = torch.where(batch.targets[:, 0] >= 1.0, self.none_weight, 1.0)
+        return (out.loss * weight).sum() / weight.sum(), out
 
 
 def demo(steps: int = 400, seed: int = 0) -> None:

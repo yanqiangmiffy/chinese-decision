@@ -11,7 +11,7 @@ not fit that script's habit of encoding every epoch up front:
   micro-batches;
 - dev, test and extra decision sets are scored with every rank taking a shard;
 - checkpoints (`checkpoint-<step>/adapter`, `span_head.pt`, `trainer_state.pt`) load with
-  SpanExtractor.from_run, and --resume continues from one.
+  DecisionPipeline.from_run, and --resume continues from one.
 
 Keeping the original decision abilities (joint training on CJ-IE alone took CJ-Bench from 83.1% to
 71.0%; see docs/UNIFIED_MODEL.md):
@@ -25,8 +25,8 @@ Keeping the original decision abilities (joint training on CJ-IE alone took CJ-B
   selected checkpoint maximizes the mean of new-task decision accuracy and macro extraction F1
   among those within --max-retention-drop points of the step-0 CJ-dev accuracy (the smallest drop
   wins if none is);
-- the selected checkpoint is tested and exported as one unified model directory (decision/unified.py:
-  merged weights and span head in one safetensors), its temperature fitted on --cj-calibration.
+- the selected checkpoint is tested and exported with DecisionModel.save_pretrained as one model
+  directory (merged weights and span head in one weight set), its temperature fitted on --cj-calibration.
 
     export PYTHONPATH=$PWD TOKENIZERS_PARALLELISM=false NCCL_P2P_DISABLE=1
     python -m torch.distributed.run --standalone --nproc_per_node=4 scripts/train_multitask_ddp.py \\
@@ -48,17 +48,13 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
+from peft import set_peft_model_state_dict
 
-from decision.data import encode
-from decision.extraction import (ExtractionEncoder, SpanHead, SpanLoss, backbone_hidden, collate_extraction,
-                                 entity_metrics, predict)
-from decision.metrics import summarize
-from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
-from decision.rlcd_loss import RLCDLoss, RLCDLossConfig, linear_schedule
-from decision.schema import LETTERS, MAX_LENGTH, PROMPT_VERSION, examples_for
-from decision.training import LORA_TARGETS, evaluate
-from decision.unified import save_unified
+from decision.losses import RLCDLoss, RLCDLossConfig, SpanLoss, linear_schedule
+from decision.metrics import entity_metrics, summarize
+from decision.modeling import DecisionModel
+from decision.processing import DecisionProcessor, examples_for
+from decision.training.common import evaluate_decisions, fit_temperature
 from decision.utils import log, write_json
 
 TASKS = ("decision", "replay", "extraction")
@@ -76,7 +72,7 @@ def parse_args(argv=None):
     parser.add_argument("--cj-calibration", default="", help="decision cases for the exported temperature")
     parser.add_argument("--max-retention-drop", type=float, default=1.0,
                         help="largest CJ-dev accuracy drop (points) a selectable checkpoint may have")
-    parser.add_argument("--export", default="model", help="unified model directory under --out ('' to skip)")
+    parser.add_argument("--export", default="model", help="exported model directory under --out ('' to skip)")
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--head-lr", type=float, default=5e-4)
@@ -124,26 +120,29 @@ def extraction_files(data, split):
     return sorted((Path(data) / "extraction").glob(f"*.{split}.jsonl"))
 
 
+def make_processor(args):
+    return DecisionProcessor.from_pretrained(args.base, max_span_units=args.max_span_units, echo=args.echo)
+
+
 # --- token lengths, computed once in a process pool ------------------------------------------------
 
 _WORKER = {}
 
 
 def _init_lengths(base, max_span_units, echo):
-    _WORKER["tokenizer"] = tokenizer = load_tokenizer(base)
-    _WORKER["encoder"] = ExtractionEncoder(tokenizer, max_span_units, echo)
+    _WORKER["processor"] = DecisionProcessor.from_pretrained(base, max_span_units=max_span_units, echo=echo)
 
 
 def _lengths(task_lines):
     """Per line: a list of example lengths (decisions) or one length (span rows); -1 = unusable."""
     task, lines = task_lines
-    out = []
+    processor, out = _WORKER["processor"], []
     for line in lines:
         if task == "extraction":
-            item = _WORKER["encoder"].encode(json.loads(line))
+            item = processor.encode_extraction(json.loads(line))
             out.append(len(item["input_ids"]) if item is not None and item["cands"] else -1)
         else:
-            items = [encode(e, _WORKER["tokenizer"], MAX_LENGTH) for e in examples_for(json.loads(line), "general")]
+            items = [processor.encode_example(e) for e in examples_for(json.loads(line), "general")]
             out.append([len(i["input_ids"]) if i else -1 for i in items])
     return out
 
@@ -186,7 +185,7 @@ def load_lengths(args, out, rank, stores):
 # --- batch plan --------------------------------------------------------------------------------
 
 def length_batches(order, lengths, batch_size, budget):
-    """`decision.data.greedy_batches` on precomputed lengths: fill in length order up to the row or token limit."""
+    """`decision.data.batching.greedy_batches` on precomputed lengths: fill in length order up to the row or token limit."""
     batches, batch = [], []
     for i in order:
         if batch and (len(batch) >= batch_size or (len(batch) + 1) * lengths[i] > budget):
@@ -221,31 +220,30 @@ def epoch_plan(args, epoch, lengths, world):
 
 
 class Batches(torch.utils.data.Dataset):
-    """Encodes one planned micro-batch per item; each worker builds its own tokenizer and encoder."""
+    """Encodes one planned micro-batch per item; each worker builds its own processor."""
 
     def __init__(self, plan, stores, decision_items, args):
         self.plan, self.stores, self.decision_items = plan, stores, decision_items
         self.settings = (args.base, args.max_span_units, args.echo)
-        self.tokenizer = self.encoder = None
+        self.processor = None
 
     def __len__(self):
         return len(self.plan)
 
     def __getitem__(self, k):
-        if self.encoder is None:
+        if self.processor is None:
             base, units, echo = self.settings
-            self.tokenizer = load_tokenizer(base)
-            self.encoder = ExtractionEncoder(self.tokenizer, units, echo)
+            self.processor = DecisionProcessor.from_pretrained(base, max_span_units=units, echo=echo)
         task, indices, seed = self.plan[k]
         rng = random.Random(seed)
         if task == "extraction":
-            items = [self.encoder.encode(json.loads(self.stores[task][i]), rng) for i in indices]
-            return task, collate_extraction(items, self.tokenizer.pad_token_id)
+            items = [self.processor.encode_extraction(json.loads(self.stores[task][i]), rng) for i in indices]
+            return task, self.processor.collate_extraction(items)
         items = []
         for i in indices:
             line, question = self.decision_items[task][i]
             example = list(examples_for(json.loads(self.stores[task][line]), "general"))[question]
-            items.append(encode(example, self.tokenizer, MAX_LENGTH, rng))
+            items.append(self.processor.encode_example(example, rng))
         return task, items
 
 
@@ -299,30 +297,28 @@ def decision_groups(rows):
     return result
 
 
-def decision_rows(model, tokenizer, letters, lines, rank, world):
+def decision_rows(model, processor, lines, rank, world):
     """This rank's shard of decision lines, scored; rank 0 receives every row."""
-    items = [encode(e, tokenizer, MAX_LENGTH) for line in lines[rank::world]
-             for e in examples_for(json.loads(line), "general")]
-    items = [i for i in items if i is not None]
-    rows = evaluate(model, tokenizer, letters, items, batch_size=32, token_budget=16384)[1] if items else []
+    items = [item for line in lines[rank::world] for item in processor.encode_case(json.loads(line))]
+    rows = evaluate_decisions(model, processor, items, batch_size=32, token_budget=16384)[1] if items else []
     collected = gather(rows, rank, world)
     return [row for part in collected for row in part] if rank == 0 else None
 
 
-def evaluate_sets(model, head, tokenizer, letters, encoder, sets, args, rank, world, none_shift):
+def evaluate_sets(model, processor, sets, args, rank, world, none_shift):
     """`sets`: {"decision": {name: lines}, "extraction": {source: lines}}; every rank scores its shard."""
     result = {}
     for name, lines in sets["decision"].items():
-        rows = decision_rows(model, tokenizer, letters, lines, rank, world)
+        rows = decision_rows(model, processor, lines, rank, world)
         if rank == 0:
             result[name] = decision_groups(rows)
     if sets["extraction"]:
         result["extraction"] = {}
         for source, lines in sets["extraction"].items():
-            items = [encoder.encode(json.loads(line)) for line in lines[rank::world]]
+            items = [processor.encode_extraction(json.loads(line)) for line in lines[rank::world]]
             items = [i for i in items if i is not None]
-            predictions = predict(model, head, items, tokenizer.pad_token_id, none_shift,
-                                  token_budget=args.token_budget) if items else []
+            predictions = model.predict_spans(items, processor, none_shift=none_shift,
+                                              token_budget=args.token_budget) if items else []
             light = [({"gold_entities": i["gold_entities"], "unrepresented": i["unrepresented"]}, p)
                      for i, p in zip(items, predictions)]
             collected = gather(light, rank, world)
@@ -330,7 +326,6 @@ def evaluate_sets(model, head, tokenizer, letters, encoder, sets, args, rank, wo
                 pairs = [pair for part in collected for pair in part]
                 result["extraction"][source] = entity_metrics([a for a, _ in pairs], [b for _, b in pairs])
     model.train()
-    head.train()
     return result
 
 
@@ -370,72 +365,52 @@ def select(history, max_drop):
     return min(trained, key=lambda h: (base - h["scores"]["cj_accuracy"], -h["scores"]["ie_score"]))
 
 
-def save_checkpoint(path, model, head, optimizer, step, none_shift, echo):
+def save_checkpoint(path, model, optimizer, step, none_shift, echo):
     path.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(path / "adapter")
+    model.backbone.save_pretrained(path / "adapter")
+    head = model.span_head
     torch.save({"state_dict": head.state_dict(), "config": head.config, "none_shift": none_shift, "echo": echo},
                path / "span_head.pt")
     torch.save({"optimizer": optimizer.state_dict(), "step": step}, path / "trainer_state.pt")
 
 
-def load_checkpoint(path, model, head, device):
+def load_checkpoint(path, model):
     from safetensors.torch import load_file
-    set_peft_model_state_dict(model, load_file(str(Path(path) / "adapter/adapter_model.safetensors")))
-    head.load_state_dict(torch.load(Path(path) / "span_head.pt", map_location=device)["state_dict"])
+    set_peft_model_state_dict(model.backbone, load_file(str(Path(path) / "adapter/adapter_model.safetensors")))
+    model.span_head.load_state_dict(torch.load(Path(path) / "span_head.pt", map_location=model.device)["state_dict"])
 
 
-def fit_temperature(rows):
-    """One softmax temperature on hard-label rows, as scripts/finalize.py fits the released models'."""
-    hard = [row for row in rows if row["hard"]]
-    if not hard:
-        return 1.0, 0
-    logits = torch.full((len(hard), len(LETTERS)), -1e4)
-    labels = torch.tensor([max(range(len(row["target"])), key=row["target"].__getitem__) for row in hard])
-    for i, row in enumerate(hard):
-        logits[i, :len(row["logits"])] = torch.tensor(row["logits"])
-    log_temperature = torch.tensor(0., requires_grad=True)
-    optimizer = torch.optim.LBFGS([log_temperature], lr=0.1, max_iter=100)
-
-    def closure():
-        optimizer.zero_grad()
-        loss = torch.nn.functional.cross_entropy(logits / log_temperature.exp().clamp(0.05, 20), labels)
-        loss.backward()
-        return loss
-    optimizer.step(closure)
-    return float(log_temperature.exp().clamp(0.05, 20).detach()), len(hard)
-
-
-def export(args, out, model, head, tokenizer, letters, selected, none_shift):
-    """Merge the selected adapter, write one unified directory, and check it reproduces the trained heads."""
-    probe = [encode(e, tokenizer, MAX_LENGTH) for line in read_lines(Path(args.data) / "decision/dev.cases.jsonl", 4)
-             for e in examples_for(json.loads(line), "general")]
+def export(args, out, model, processor, selected, none_shift):
+    """Merge the selected adapter, check it keeps the decisions, and write one model directory."""
+    probe = [item for line in read_lines(Path(args.data) / "decision/dev.cases.jsonl", 4)
+             for item in processor.encode_case(json.loads(line))]
+    letters = model.letter_tensor(processor)
     model.eval()
     with torch.inference_mode():
-        before, _ = forward_batch(model, tokenizer, letters, probe)
-    merged = model.merge_and_unload(safe_merge=True).eval()
+        before, _ = model.score_decisions(probe, processor, letters)
+    model.merge_adapter(safe_merge=True).eval()
     with torch.inference_mode():
-        after, _ = forward_batch(merged, tokenizer, letters, probe)
+        after, _ = model.score_decisions(probe, processor, letters)
     delta = float((before - after).abs().max())
     if not torch.equal(before.argmax(-1), after.argmax(-1)):
         raise ValueError("merging the adapter changed probe decisions")
     temperature, hard_n = 1.0, 0
     if args.cj_calibration:
-        _, rows = evaluate(merged, tokenizer, letters,
-                           [i for line in read_lines(args.cj_calibration)
-                            for i in [encode(e, tokenizer, MAX_LENGTH) for e in examples_for(json.loads(line), "general")]
-                            if i is not None], batch_size=32, token_budget=16384)
+        items = [item for line in read_lines(args.cj_calibration) for item in processor.encode_case(json.loads(line))]
+        _, rows = evaluate_decisions(model, processor, items, batch_size=32, token_budget=16384)
         temperature, hard_n = fit_temperature(rows)
     target = out / args.export
     if target.exists():
         shutil.rmtree(target)
-    base_config = json.loads((Path(args.base) / "decision_config.json").read_text()) \
-        if (Path(args.base) / "decision_config.json").exists() else {}
-    save_unified(merged, head, tokenizer, target,
-                 {"model_name": f"{base_config.get('model_name', Path(args.base).name)}-ie", "temperature": temperature,
-                  "calibration_hard_n": hard_n, "prompt_version": PROMPT_VERSION, "max_length": MAX_LENGTH,
-                  "max_options": len(LETTERS), "source_run": str(out), "merge_probe_max_logit_delta": delta},
-                 {"none_shift": none_shift, "echo": args.echo},
-                 summary={"base": str(args.base), "selected": selected, "training_config": vars(args)})
+    config = model.config
+    config.model_name = f"{config.model_name or Path(args.base).name}-ie"
+    config.temperature = temperature
+    config.extraction.none_shift = none_shift
+    config.metadata.update({"calibration_hard_n": hard_n, "source_run": str(out), "merge_probe_max_logit_delta": delta})
+    model.save_pretrained(target, processor)
+    (target / "training_summary.json").write_text(json.dumps(
+        {"base": str(args.base), "selected": selected, "training_config": vars(args)}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
     log("exported", path=str(target), temperature=temperature, calibration_hard_n=hard_n, merge_delta=delta)
     return target
 
@@ -454,8 +429,7 @@ def main():
     if rank == 0:
         write_json(out / "config.json", vars(args) | {"world_size": world})
 
-    tokenizer = load_tokenizer(args.base)
-    encoder = ExtractionEncoder(tokenizer, args.max_span_units, args.echo)
+    processor = make_processor(args)
     stores = {"decision": read_lines(Path(args.data) / "decision/train.cases.jsonl", args.limit),
               "replay": read_lines(args.replay, args.limit) if args.replay else [],
               "extraction": [line for path in extraction_files(args.data, "train") for line in read_lines(path, args.limit)]}
@@ -468,19 +442,16 @@ def main():
     device = torch.device("cuda", local)
     if distributed:
         dist.init_process_group("nccl", timeout=datetime.timedelta(hours=2))
-    letters = letter_tokens(tokenizer, device)
     dev_sets, test_sets = eval_sets(args, "dev"), eval_sets(args, "test")
 
-    model = load_model(args.base, device=str(device))
-    model = get_peft_model(model, LoraConfig(r=args.lora_r, lora_alpha=args.lora_r * 2, lora_dropout=.05,
-                                             task_type=TaskType.CAUSAL_LM, target_modules=LORA_TARGETS))
+    model = DecisionModel.from_pretrained(args.base, device=str(device))
+    letters = model.letter_tensor(processor)
+    lora_params = model.enable_lora(r=args.lora_r)
     if args.grad_checkpointing:
-        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-        model.enable_input_require_grads()
+        model.backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        model.backbone.enable_input_require_grads()
+    head_params = list(model.add_span_head(args.max_span_units, echo=args.echo).parameters())
     model.train()
-    head = SpanHead(model.config.hidden_size, args.max_span_units).to(device)
-    lora_params = [p for p in model.parameters() if p.requires_grad]
-    head_params = list(head.parameters())
     if world > 1:
         for p in lora_params + head_params:          # identical starting point on every rank
             dist.broadcast(p.data, src=0)
@@ -495,7 +466,7 @@ def main():
     total = sum(steps_per_epoch)
     step, history = 0, []
     if args.resume:
-        load_checkpoint(args.resume, model, head, device)
+        load_checkpoint(args.resume, model)
         state = torch.load(Path(args.resume) / "trainer_state.pt", map_location=device)
         optimizer.load_state_dict(state["optimizer"])
         step = state["step"]
@@ -508,7 +479,7 @@ def main():
             micro_batches=dict(Counter(task for plan in plans for task, _, _ in plan)), none_shift=span_loss.none_shift)
 
     def dev_eval(checkpoint):
-        dev = evaluate_sets(model, head, tokenizer, letters, encoder, dev_sets, args, rank, world, span_loss.none_shift)
+        dev = evaluate_sets(model, processor, dev_sets, args, rank, world, span_loss.none_shift)
         if rank == 0:
             entry = {"step": step, "checkpoint": checkpoint, "scores": summary_scores(dev), "dev": dev}
             history.append(entry)
@@ -518,7 +489,7 @@ def main():
     def checkpoint_and_eval():
         path = out / f"checkpoint-{step}"
         if rank == 0:
-            save_checkpoint(path, model, head, optimizer, step, span_loss.none_shift, args.echo)
+            save_checkpoint(path, model, optimizer, step, span_loss.none_shift, args.echo)
         dev_eval(str(path))
 
     if step == 0 and not history:
@@ -546,17 +517,16 @@ def main():
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 if task == "extraction":
                     tensors = batch.to(device)
-                    utilities = head(backbone_hidden(model, tensors), tensors)
-                    loss = args.extraction_weight * span_loss(utilities, tensors, sigma=sigma)[0]
+                    loss = args.extraction_weight * span_loss(model.span_utilities(tensors), tensors, sigma=sigma)[0]
                 else:
-                    logits, targets = forward_batch(model, tokenizer, letters, batch)
+                    logits, targets = model.score_decisions(batch, processor, letters)
                     sizes = torch.tensor([len(e["target"]) for e in batch], device=device)
                     mask = torch.arange(logits.shape[-1], device=device)[None] < sizes[:, None]
                     ordinal = torch.tensor([e["kind"] == "score" for e in batch], device=device)
                     loss = decision_loss(logits, targets, mask, ordinal, sigma=sigma).loss
                     if task == "replay" and args.kl_weight > 0:
-                        with torch.no_grad(), model.disable_adapter():
-                            reference, _ = forward_batch(model, tokenizer, letters, batch)
+                        with torch.no_grad(), model.adapter_disabled():
+                            reference, _ = model.score_decisions(batch, processor, letters)
                         kl = kl_to_reference(logits, reference)
                         recent[6] += kl.detach()
                         recent[7] += 1
@@ -609,16 +579,15 @@ def main():
         checkpoint = box[0]
     else:
         checkpoint = selected["checkpoint"]
-    load_checkpoint(checkpoint, model, head, device)
-    test = evaluate_sets(model, head, tokenizer, letters, encoder, test_sets, args, rank, world, span_loss.none_shift)
+    load_checkpoint(checkpoint, model)
+    test = evaluate_sets(model, processor, test_sets, args, rank, world, span_loss.none_shift)
     if rank == 0:
         write_json(out / "metrics_test.json", {"checkpoint": checkpoint, **test})
         log("test", checkpoint=checkpoint, seconds=round(time.time() - started))
     if distributed:
         dist.destroy_process_group()
     if rank == 0 and args.export:
-        export(args, out, model, head, tokenizer, letters, {"checkpoint": checkpoint, **selected["scores"]},
-               span_loss.none_shift)
+        export(args, out, model, processor, {"checkpoint": checkpoint, **selected["scores"]}, span_loss.none_shift)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from decision.metrics import Accumulator, BenchmarkMetrics, summarize
-from decision.schema import PROMPT_VERSION
+from decision.processing import PROMPT_VERSION
 from scripts.evaluate import deployment_metadata
 
 

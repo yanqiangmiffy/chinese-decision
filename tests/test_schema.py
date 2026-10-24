@@ -2,7 +2,7 @@ import copy
 import random
 import unittest
 
-from decision.schema import examples_for, options_for, target_for, user_prompt
+from decision.processing import examples_for, options_for, target_for, user_prompt
 
 
 class DecisionSchemaTests(unittest.TestCase):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chinese-decision"
-version = "0.1.0"
+version = "0.2.0"
 description = "Chinese probabilistic decision model: one forward pass, straight to candidate probabilities"
 readme = "README_EN.md"
 license = "MIT AND Apache-2.0"
@@ -24,5 +24,5 @@ train = ["torch>=2.8", "peft>=0.19", "flash-linear-attention>=0.4"]
 [project.urls]
 Repository = "https://github.com/yanqiangmiffy/chinese-decision"
 
-[tool.setuptools]
-packages = ["decision"]
+[tool.setuptools.packages.find]
+include = ["decision*"]

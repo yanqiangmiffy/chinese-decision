@@ -3,8 +3,8 @@ import unittest
 import torch
 import torch.nn.functional as F
 
-from decision.rlcd import rlcd_loss
-from decision.rlcd_loss import (RLCDLoss, RLCDLossConfig, masked_log_softmax, proper_score)
+from decision.training.group_rlcd import rlcd_loss
+from decision.losses import (RLCDLoss, RLCDLossConfig, masked_log_softmax, proper_score)
 
 
 def random_decisions(sizes, slots, seed):

@@ -8,7 +8,8 @@ from transformers import AutoModelForCausalLM, PreTrainedTokenizerFast
 from transformers.models.qwen3_5 import modeling_qwen3_5
 from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5TextConfig
 
-from decision.model import forward_batch
+from decision.modeling import DecisionModel
+from decision.processing import DecisionProcessor
 
 VOCAB = 64
 LETTERS = torch.arange(1, 27)
@@ -38,19 +39,20 @@ def tiny_tokenizer():
                                    pad_token="t0", padding_side="left")
 
 
-class ForwardBatchTests(unittest.TestCase):
+class ScoreDecisionsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.model, cls.tokenizer = tiny_qwen(), tiny_tokenizer()
+        cls.backbone = tiny_qwen()
+        cls.model, cls.processor = DecisionModel(cls.backbone), DecisionProcessor(tiny_tokenizer())
 
     def alone(self, ids):
         with torch.inference_mode():
-            return self.model(torch.tensor([ids]), use_cache=False).logits[0, -1, LETTERS]
+            return self.backbone(torch.tensor([ids]), use_cache=False).logits[0, -1, LETTERS]
 
     def batch_logits(self, inputs, k):
         batch = [{"input_ids": ids, "target": [1.] + [0.] * (k - 1)} for ids in inputs]
         with torch.inference_mode():
-            return forward_batch(self.model, self.tokenizer, LETTERS, batch)[0]
+            return self.model.score_decisions(batch, self.processor, LETTERS)[0]
 
     def test_single_input_matches_unpadded_forward(self):
         # Ten tokens would be left-padded to 64, and Qwen3.5 does not mask a one-row batch.

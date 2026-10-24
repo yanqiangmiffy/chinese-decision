@@ -405,35 +405,55 @@ Both use the calibrated temperature in `decision_config.json` and expose the sam
 ### Python (0.8B example)
 
 ```python
-import json
-from pathlib import Path
+from decision import DecisionPipeline
 
-import torch
-from decision.model import forward_batch, letter_tokens, load_model, load_tokenizer
-from decision.schema import compile_prompt, options_for
-
-base = "models/chinese-decision-0.8b"  # merged model; or load_model("models/Qwen3.5-0.8B", adapter="runs/cj-ddp/best")
-tokenizer = load_tokenizer(base)
-model = load_model(base).eval()
-letters = letter_tokens(tokenizer, "cuda")
-config = Path(base, "decision_config.json")
-temperature = json.loads(config.read_text())["temperature"] if config.exists() else 1.0
-
-state = "客户留言：付款后一直没有收到发票，我已经催了三次，今天必须拿到。"
-question = {
-    "type": "choice",
-    "instructions": "应该由哪个部门处理？",
-    "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"},
-}
-
-options = options_for(question)
-prompt = compile_prompt(tokenizer, state, question["instructions"], options)
-item = {"input_ids": tokenizer.encode(prompt, add_special_tokens=False), "target": [0.0] * len(options)}
-with torch.inference_mode():
-    logits, _ = forward_batch(model, tokenizer, letters, [item])
-probs = (logits[0, :len(options)] / temperature).softmax(-1).tolist()
-print({key: round(p, 4) for (key, _), p in zip(options, probs)})
+pipe = DecisionPipeline.from_pretrained("models/chinese-decision-0.8b")   # local directory or Hub repository id
+answer = pipe({
+    "state": "客户留言：付款后一直没有收到发票，我已经催了三次，今天必须拿到。",
+    "questions": {"q": {
+        "type": "choice",
+        "instructions": "应该由哪个部门处理？",
+        "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"},
+    }},
+})
+print(answer)   # {"task": "decision", "answers": {"q": {"billing": 0.97, ...}}}, calibrated with decision_config.json
 ```
+
+A model with a span head (for example a joint-training export, `runs/<run>/model`) extracts with the same object:
+
+```python
+pipe({"text": "华为公司董事长梁华在深圳会见了腾讯游戏负责人。", "types": {"人名": "人物的姓名", "公司": "企业名称"}})
+# {"task": "extraction", "entities": [{"text": "华为公司", "label": "公司", "start": 0, "end": 4, "score": ...}, ...]}
+```
+
+The request picks the task: `questions` means a decision, `types` means extraction. The lower-level API follows transformers:
+
+| Class | Role |
+|---|---|
+| `DecisionConfig` | `decision_config.json`: temperature, prompt version, span head settings |
+| `DecisionProcessor` | prompt compilation, encoding, padding and decoding for both tasks |
+| `DecisionModel` | backbone + optional span head; `from_pretrained` / `save_pretrained` (LoRA merged, one weight set), `enable_lora`, `score_decisions`, `predict_spans` |
+| `DecisionPipeline` | request-level inference: `decide`, `extract`, `__call__` |
+
+A training adapter loads directly with `DecisionModel.from_pretrained("models/Qwen3.5-0.8B", adapter="runs/cj-ddp/best")`; a joint-training run directory with `DecisionPipeline.from_run(base, run)`.
+
+Code layout:
+
+```text
+decision/
+  configuration.py   DecisionConfig / ExtractionConfig
+  processing.py      DecisionProcessor, the CJ case format, both prompt layouts
+  modeling.py        DecisionModel, SpanHead
+  pipeline.py        DecisionPipeline, SlotFillingPipeline
+  losses.py          RLCDLoss, SpanLoss
+  metrics.py         validation, CJ-Bench and extraction metrics
+  data/              CJ-Dataset streaming and batching, slot records, the CJ-IE builders (ie/)
+  training/          LoRA targets, decision evaluation, temperature fitting, grouped RLCD
+  serving/           HTTP answer format, Transformers / GGUF backends, candidate tournaments
+scripts/             command-line entry points for training, export, evaluation and serving
+```
+
+`import decision` does not load PyTorch; the GGUF CPU server still needs only transformers.
 
 ### HTTP Server
 

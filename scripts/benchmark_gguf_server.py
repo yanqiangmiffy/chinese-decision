@@ -9,8 +9,8 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from decision.inference import candidate_probabilities
-from decision.schema import LETTERS
+from decision.serving.backends import candidate_probabilities
+from decision.processing import LETTERS
 from decision.utils import log, write_json
 
 
@@ -52,7 +52,7 @@ def main():
     temperature=json.loads((Path(args.model)/'decision_config.json').read_text())['temperature']
     start=time.perf_counter()
     if args.backend.startswith('transformers'):
-        from decision.inference import TransformersBackend
+        from decision.serving.backends import TransformersBackend
         engine=TransformersBackend(args.model,device='cpu' if args.backend.endswith('-cpu') else 'cuda',threads=args.threads)
         def infer(row):
             return engine.logits(row['input_ids'],len(row['target']))
