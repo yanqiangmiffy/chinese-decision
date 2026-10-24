@@ -22,6 +22,14 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(trainer.select(history, max_drop=1.0)["step"], 1500)     # 1000 drops 2 points
         self.assertEqual(trainer.select(history, max_drop=3.0)["step"], 1000)
 
+    def test_joint_selection_weighs_cj_accuracy_and_the_new_tasks(self):
+        history = [entry(0, 0.1, 0.30, checkpoint=False), entry(500, 0.80, 0.60), entry(1000, 0.70, 0.75)]
+        self.assertEqual(trainer.select(history, max_drop=1.0, mode="retention")["step"], 500)
+        self.assertEqual(trainer.select(history, max_drop=1.0, mode="joint")["step"], 1000)
+
+    def test_cj_train_is_the_replay_flag_under_its_raw_base_name(self):
+        self.assertEqual(trainer.parse_args(["--out", "x", "--cj-train", "cj.jsonl"]).replay, "cj.jsonl")
+
     def test_smallest_drop_when_nothing_qualifies_and_ie_only_without_cj_dev(self):
         history = [entry(0, 0.1, 0.80, checkpoint=False), entry(500, 0.70, 0.75), entry(1000, 0.80, 0.70)]
         self.assertEqual(trainer.select(history, max_drop=1.0)["step"], 500)

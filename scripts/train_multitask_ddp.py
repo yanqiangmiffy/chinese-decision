@@ -28,6 +28,13 @@ Keeping the original decision abilities (joint training on CJ-IE alone took CJ-B
 - the selected checkpoint is tested and exported with DecisionModel.save_pretrained as one model
   directory (merged weights and span head in one weight set), its temperature fitted on --cj-calibration.
 
+Two starting points:
+- a released decision model (--base models/chinese-decision-0.8b): CJ decisions are replay with the KL
+  anchor, and selection keeps the old abilities (--selection retention, the default);
+- a raw base (--base models/Qwen3.5-0.8B): the whole of CJ-Dataset is ordinary training data
+  (--cj-train, with --kl-weight 0, since the adapter-disabled model is not a decision model), and
+  selection weighs both tasks (--selection joint: the mean of CJ-dev accuracy and the new-task score).
+
     export PYTHONPATH=$PWD TOKENIZERS_PARALLELISM=false NCCL_P2P_DISABLE=1
     python -m torch.distributed.run --standalone --nproc_per_node=4 scripts/train_multitask_ddp.py \\
         --data datasets/cj-ie --out runs/cj-ie-0.8b-v2 --replay datasets/cj-replay/train.cases.jsonl \\
@@ -55,7 +62,7 @@ from decision.metrics import entity_metrics, summarize
 from decision.modeling import DecisionModel
 from decision.processing import DecisionProcessor, examples_for
 from decision.training.common import evaluate_decisions, fit_temperature
-from decision.utils import log, write_json
+from decision.utils import log, model_name_for, write_json
 
 TASKS = ("decision", "replay", "extraction")
 
@@ -66,10 +73,14 @@ def parse_args(argv=None):
     parser.add_argument("--data", default="datasets/cj-ie")
     parser.add_argument("--out", required=True)
     parser.add_argument("--retention", default="", help="extra decision cases scored with dev and test")
-    parser.add_argument("--replay", default="", help="CJ decision cases replayed with the KL anchor")
+    parser.add_argument("--replay", "--cj-train", dest="replay", default="",
+                        help="CJ decision cases: replay with the KL anchor, or the main decision data from a raw base")
     parser.add_argument("--kl-weight", type=float, default=1.0, help="KL(start model || model) on replay batches")
     parser.add_argument("--cj-dev", default="", help="independent decision validation for checkpoint selection")
     parser.add_argument("--cj-calibration", default="", help="decision cases for the exported temperature")
+    parser.add_argument("--selection", choices=("retention", "joint"), default="retention",
+                        help="retention: best new-task score within --max-retention-drop of step 0; "
+                             "joint: best mean of CJ-dev accuracy and new-task score")
     parser.add_argument("--max-retention-drop", type=float, default=1.0,
                         help="largest CJ-dev accuracy drop (points) a selectable checkpoint may have")
     parser.add_argument("--export", default="model", help="exported model directory under --out ('' to skip)")
@@ -351,14 +362,20 @@ def summary_scores(dev):
             "cj_accuracy": cj.get("accuracy"), "cj_hard_nll": cj.get("hard_nll")}
 
 
-def select(history, max_drop):
-    """The trained checkpoint to keep: best ie_score within the CJ-dev drop limit, else the smallest drop."""
+def select(history, max_drop, mode="retention"):
+    """The trained checkpoint to keep.
+
+    retention: best ie_score within the CJ-dev drop limit of step 0, else the smallest drop.
+    joint: best mean of CJ-dev accuracy and ie_score (for a raw base, whose step 0 is no baseline to keep).
+    """
     base = history[0]["scores"]["cj_accuracy"]
     trained = [h for h in history if h["step"] > 0 and h.get("checkpoint")]
     if not trained:
         return None
     if base is None:
         return max(trained, key=lambda h: h["scores"]["ie_score"])
+    if mode == "joint":
+        return max(trained, key=lambda h: (h["scores"]["cj_accuracy"] + h["scores"]["ie_score"]) / 2)
     eligible = [h for h in trained if 100 * (base - h["scores"]["cj_accuracy"]) <= max_drop]
     if eligible:
         return max(eligible, key=lambda h: h["scores"]["ie_score"])
@@ -403,7 +420,7 @@ def export(args, out, model, processor, selected, none_shift):
     if target.exists():
         shutil.rmtree(target)
     config = model.config
-    config.model_name = f"{config.model_name or Path(args.base).name}-ie"
+    config.model_name = f"{config.model_name or model_name_for(args.base)}-ie"
     config.temperature = temperature
     config.extraction.none_shift = none_shift
     config.metadata.update({"calibration_hard_n": hard_n, "source_run": str(out), "merge_probe_max_logit_delta": delta})
@@ -568,10 +585,11 @@ def main():
 
     selected = None
     if rank == 0:
-        selected = select(history, args.max_retention_drop)
+        selected = select(history, args.max_retention_drop, args.selection)
         log("selected", step=selected["step"], checkpoint=selected["checkpoint"], **selected["scores"])
         write_json(out / "selection.json", {"selected": selected["step"], "checkpoint": selected["checkpoint"],
                                             "scores": selected["scores"], "baseline": history[0]["scores"],
+                                            "selection": args.selection,
                                             "max_retention_drop_points": args.max_retention_drop})
     if world > 1:
         box = [selected["checkpoint"] if rank == 0 else None]
