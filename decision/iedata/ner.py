@@ -13,10 +13,8 @@ import json
 import re
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
 from .common import (OTHER, Raw, Source, Views, bio_entities, carve, choice_case, entity, join_tokens, locate,
-                     mark, sample_candidates, type_entry, window_rows)
+                     mark, read_parquet, sample_candidates, type_entry, window_rows)
 
 B2NERD = "B2NERD/extracted/B2NERD_all/NER_zh"
 TYPING_INSTRUCTIONS = "文本中用【】标出的部分是一个实体。根据各类型的定义，判断它属于哪一类。"
@@ -58,11 +56,12 @@ MULTINERD = {"PER": ("人名", "真实或虚构人物的姓名"), "ORG": ("组�
              "TIME": ("时期", "有名称的历史时期或时代，如文艺复兴、战国时期"), "VEHI": ("交通工具", "车辆、船舶、飞机等交通工具的名称或型号")}
 MULTINERD_TAGS = ["O"] + [f"{p}-{t}" for t in MULTINERD for p in "BI"]
 # B2NERD subsets read as they are. Corpora that also exist standalone (Boson, CBLUE, CLUENER, MSRA, Resume,
-# Weibo, MultiCoNER23) come from their own files; CCIR2021 is a subset of zh-ontonotes.
+# Weibo, MultiCoNER23) come from their own files. Left out as exact-text subsets of another subset:
+# CCIR2021 and finance-sina (of zh-ontonotes), CCKS2018 (777 of its 797 texts are in CCKS2017).
 B2NERD_SUBSETS = {
-    "bank": "finance", "CAIL2021": "legal", "CAIL2022": "legal", "CCKS2017": "medical", "CCKS2018": "medical",
+    "bank": "finance", "CAIL2021": "legal", "CAIL2022": "legal", "CCKS2017": "medical",
     "CCKS2019": "medical", "CCKS2020": "medical", "CCKS2021address": "general", "chineseliterature-ner": "general",
-    "finance-sina": "finance", "FNED": "general", "gaiic2022": "ecommerce", "imcs21": "medical",
+    "FNED": "general", "gaiic2022": "ecommerce", "imcs21": "medical",
     "math-high": "education", "Microbiota": "medical", "military-ner": "military", "multiconer22": "general",
     "nlpcc2018": "dialogue", "peopledaily2014": "general", "ruijinmcc": "medical", "Taobao": "ecommerce",
     "wanchuang": "medical", "youku": "general", "zh-ontonotes": "general",
@@ -143,7 +142,7 @@ class NerSource(Source):
 
 
 def parquet_rows(path):
-    table = pq.read_table(path)
+    table = read_parquet(path)
     return table, table.to_pylist()
 
 

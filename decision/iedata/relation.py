@@ -11,22 +11,24 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
-from .common import (NONE_RELATION, Raw, Source, Views, carve, choice_case, entity, locate, sample_candidates,
-                     span_row, type_entry)
+from .common import (NONE_RELATION, Raw, Source, Views, carve, choice_case, entity, locate, read_parquet,
+                     sample_candidates, span_row, type_entry)
 
 PAIR_INSTRUCTIONS = "根据文本，判断“{s}”（主体）与“{o}”（客体）之间是下列哪种关系；文本没有表达其中任何一种时选择“无关系”。"
 NONE_DESCRIPTION = "文本没有表达以上任何一种关系"
 DUIE_PREDICATES = {"object@inWork": "所属作品", "object@onDate": "获奖日期", "object@period": "获奖届次",
                    "object@inArea": "所在地区"}
 DUIE_TYPES = {"Date": "日期", "Number": "数值", "Text": "文本"}
+# Predicates that do not read as "<object>是<subject>的<predicate>": pair description and span type name.
+PHRASES = {"获奖": ("“{s}”获得了“{o}”", "{s}获得的奖项"), "饰演": ("“{s}”饰演了“{o}”", "{s}饰演的角色"),
+           "配音": ("“{s}”为“{o}”配音", "{s}配音的角色"), "改编自": ("“{s}”改编自“{o}”", "{s}的改编来源")}
 
 # FinRE: active and passive ("被X") readings; {h}/{t} are the head and tail entities of the line.
 FINRE_SYMMETRIC = {"合作": "“{h}”与“{t}”合作", "竞争": "“{h}”与“{t}”存在竞争", "纠纷": "“{h}”与“{t}”存在纠纷",
                    "交易": "“{h}”与“{t}”进行交易", "签约": "“{h}”与“{t}”签约", "合并": "“{h}”与“{t}”合并",
                    "重组": "“{h}”与“{t}”重组", "合资": "“{h}”与“{t}”合资", "商讨": "“{h}”与“{t}”商讨合作或交易",
                    "订单": "“{h}”与“{t}”之间有订单往来", "自己": "“{h}”与“{t}”指同一家公司或机构（全称、简称或别称）"}
+FINRE_DISPLAY = {"自己": "同一主体"}
 FINRE_DIRECTED = {"拥有": ("“{h}”拥有“{t}”", "“{h}”为“{t}”所拥有"), "持股": ("“{h}”持有“{t}”的股份", "“{h}”的股份被“{t}”持有"),
                   "分析": ("“{h}”分析评价“{t}”", "“{h}”被“{t}”分析评价"), "收购": ("“{h}”收购“{t}”", "“{h}”被“{t}”收购"),
                   "拟收购": ("“{h}”拟收购“{t}”", "“{h}”拟被“{t}”收购"), "减持": ("“{h}”减持“{t}”的股份", "“{h}”的股份被“{t}”减持"),
@@ -69,6 +71,14 @@ class TripleSource(Source):
     def tname(self, label):
         return self.type_names.get(label, label)
 
+    def describe(self, predicate, s, o):
+        if predicate in PHRASES:
+            return PHRASES[predicate][0].format(s=s, o=o)
+        return f"“{o}”是“{s}”的{self.pname(predicate)}"
+
+    def type_name(self, s, predicate):
+        return PHRASES[predicate][1].format(s=s) if predicate in PHRASES else f"{s}的{self.pname(predicate)}"
+
     def predicates(self, subject_labels, object_labels=None):
         if object_labels is None:
             return set().union(*(self.by_subject[s] for s in subject_labels))
@@ -93,7 +103,7 @@ class TripleSource(Source):
             types = []
             for predicate in predicates:
                 objects = sorted(set().union(*(self.schema.get((label, predicate), set()) for label in labels)))
-                types.append(type_entry(predicate, f"{surface}的{self.pname(predicate)}",
+                types.append(type_entry(predicate, self.type_name(surface, predicate),
                                         "或".join(self.tname(t) for t in objects)))
             spans = {(entities[o][0], entities[o][1], p) for _, p, o in items}
             views.spans.append((stem, span_row(f"{stem}/{raw.split}/{raw.uid}#{index}", stem, text, types,
@@ -103,8 +113,9 @@ class TripleSource(Source):
         for s, p, o in triples:
             related[(s, o)].add(p)
         pairs = [(pair, sorted(ps)) for pair, ps in sorted(related.items())]
+        surface = [text[s:e] for s, e, _ in entities]
         unrelated = [(a, b) for a in range(len(entities)) for b in range(len(entities))
-                     if a != b and (a, b) not in related and entities[a][:2] != entities[b][:2]
+                     if surface[a] != surface[b] and (a, b) not in related
                      and self.predicates(entities[a][2], entities[b][2])]
         rng.shuffle(unrelated)
         quota = max(1, round(len(pairs) * options["negative_pairs"]))
@@ -115,7 +126,7 @@ class TripleSource(Source):
                 continue
             pool = sorted(self.predicates(entities[a][2], entities[b][2]) | set(gold))
             keys = sample_candidates(gold, pool, rng, limit=15)
-            criteria = {self.pname(p): f"“{o_text}”是“{s_text}”的{self.pname(p)}" for p in keys}
+            criteria = {self.pname(p): self.describe(p, s_text, o_text) for p in keys}
             criteria[NONE_RELATION] = NONE_DESCRIPTION
             views.decisions.append(choice_case(
                 f"re_pair/{self.name}/{raw.split}/{raw.uid}#{index}", {"文本": text, "主体": s_text, "客体": o_text},
@@ -137,7 +148,7 @@ class DuIE(TripleSource):
 
     def rows(self, split):
         path, = sorted((self.root / "DuIE-HF/data").glob(f"{split}-*.parquet"))
-        return pq.read_table(path).to_pylist()
+        return read_parquet(path).to_pylist()
 
     def records(self):
         for file_split, split in (("train", None), ("validation", "test")):
@@ -260,9 +271,9 @@ class FinRE(PairSource):
         gold = [label for label in labels if label != "unknown"]
         converse = [label[1:] if label.startswith("被") else "被" + label for label in gold]
         keys = sample_candidates(gold, self.labels, rng, limit=15, first=converse)
-        criteria = {label: self.describe(label, head, tail) for label in keys}
+        criteria = {FINRE_DISPLAY.get(label, label): self.describe(label, head, tail) for label in keys}
         criteria[NONE_RELATION] = FINRE_UNKNOWN
-        return criteria, gold or [NONE_RELATION]
+        return criteria, [FINRE_DISPLAY.get(label, label) for label in gold] or [NONE_RELATION]
 
 
 class SanWen(PairSource):

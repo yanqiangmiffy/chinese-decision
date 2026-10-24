@@ -54,6 +54,12 @@ class Source:
                 "group_key": f"{self.name}:{raw.uid}", **extra}
 
 
+def read_parquet(path):
+    """A parquet table; pyarrow is needed only by the readers, not by the views."""
+    import pyarrow.parquet as pq
+    return pq.read_table(path)
+
+
 def norm(text):
     """Comparison form: NFKC (full-width to half-width), no whitespace, lower case."""
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text)).lower()
