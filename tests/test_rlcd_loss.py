@@ -3,8 +3,33 @@ import unittest
 import torch
 import torch.nn.functional as F
 
-from decision.training.group_rlcd import rlcd_loss
-from decision.losses import (RLCDLoss, RLCDLossConfig, masked_log_softmax, proper_score)
+from decision.losses import RLCDLoss, RLCDLossConfig, linear_schedule, masked_log_softmax, proper_score
+
+
+def legacy_rlcd_term(logits, targets, batch, sigma, group_size):
+    """The `--rlcd` term earlier runs of scripts/train.py trained with, kept frozen as a reference.
+
+    Adapted from gulucaptain/Chinese-Jev (Apache-2.0), revision aed6193be569: `modeling.proper_reward`
+    and `train.decision_loss`; see THIRD_PARTY_NOTICES.md. `RLCDLossConfig.chinese_jev()` must match it.
+    """
+    sizes = torch.tensor([len(e["target"]) for e in batch])
+    mask = torch.arange(logits.shape[-1])[None, :] < sizes[:, None]
+    is_score = torch.tensor([e["kind"] == "score" for e in batch])
+    k = mask.sum(-1, keepdim=True).float()
+    eps = torch.randn((group_size,) + logits.shape) * sigma * mask
+    eps = (eps - eps.sum(-1, keepdim=True) / k) * mask
+    z = logits.detach().unsqueeze(0) + eps
+    q = torch.softmax(z.masked_fill(~mask, -1e4), -1) * mask
+    with torch.no_grad():
+        target = targets.unsqueeze(0)
+        logq = torch.log(q.clamp_min(1e-12)).clamp_min(-9.21)
+        reward = (target * logq).sum(-1) + 0.75 * (target * q).sum(-1) / q.norm(dim=-1).clamp_min(1e-9)
+        rps = (((q.cumsum(-1) - target.cumsum(-1)) ** 2) * mask).sum(-1) / (mask.sum(-1).clamp(min=2).float() - 1)
+        reward = reward - rps * is_score.float()
+        advantage = reward - reward.mean(0, keepdim=True)
+        advantage = advantage / (advantage.std() + 1e-6)
+    logp = -(((z - logits.unsqueeze(0)) ** 2) * mask).sum(-1) / (2 * sigma ** 2)
+    return -(advantage * logp).mean(), reward.mean()
 
 
 def random_decisions(sizes, slots, seed):
@@ -26,6 +51,20 @@ class ProperScoreTests(unittest.TestCase):
             others = torch.softmax(2 * torch.randn(512, 1, 4, generator=generator), -1)
             scores = proper_score(others.log(), others, target, mask, ordinal_mask)
             self.assertTrue((scores <= best + 1e-6).all())
+
+    def test_rps_only_penalizes_ordinal_decisions(self):
+        q = torch.tensor([[.1, .2, .7]])
+        target = torch.tensor([[1., 0., 0.]])
+        mask = torch.ones(1, 3, dtype=torch.bool)
+        gap = (proper_score(q.log(), q, target, mask, torch.tensor([False]))
+               - proper_score(q.log(), q, target, mask, torch.tensor([True])))
+        # CDF differences .9 and .7 over K - 1 = 2 levels.
+        self.assertAlmostEqual(float(gap), (.9 ** 2 + .7 ** 2) / 2, places=6)
+
+    def test_sigma_anneals_linearly_and_clamps(self):
+        self.assertAlmostEqual(linear_schedule(.4, .1, 0.), .4)
+        self.assertAlmostEqual(linear_schedule(.4, .1, .5), .25)
+        self.assertAlmostEqual(linear_schedule(.4, .1, 2.), .1)
 
 
 class RLCDLossTests(unittest.TestCase):
@@ -78,7 +117,7 @@ class RLCDLossTests(unittest.TestCase):
         reference = raw.clone().requires_grad_()
         logits = reference.masked_fill(~valid, -1e4)
         torch.manual_seed(0)
-        term, _ = rlcd_loss(logits, targets, batch, sigma=0.3, group_size=4)
+        term, _ = legacy_rlcd_term(logits, targets, batch, sigma=0.3, group_size=4)
         expected = -(targets * logits.log_softmax(-1)).sum(-1).mean() + term
         expected.backward()
 
@@ -90,11 +129,24 @@ class RLCDLossTests(unittest.TestCase):
         self.assertAlmostEqual(out.loss.item(), expected.item(), places=5)
         self.assertTrue(torch.allclose(candidate.grad, reference.grad, atol=1e-5))
 
+    def test_same_global_seed_gives_same_loss(self):
+        logits, targets, mask = random_decisions([5, 2], 6, seed=8)
+        loss_fn = RLCDLoss(RLCDLossConfig.chinese_jev())
+
+        def run():
+            torch.manual_seed(7)
+            return loss_fn(logits, targets, mask, sigma=0.3).loss.item()
+        self.assertEqual(run(), run())
+
     def test_rejects_target_mass_on_padding(self):
         logits, targets, mask = random_decisions([2, 3], 3, seed=7)
         targets[0] = torch.tensor([.5, .25, .25])
         with self.assertRaises(ValueError):
             RLCDLoss()(logits, targets, mask)
+
+    def test_group_of_one_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "num_samples"):
+            RLCDLossConfig(num_samples=1)
 
 
 if __name__ == "__main__":

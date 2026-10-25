@@ -26,7 +26,7 @@ from decision.data.cj import DOMAINS, FULL_TRAIN_DECISIONS, prepared_examples, v
 from decision.modeling import DecisionModel
 from decision.processing import MAX_LENGTH, PROMPT_VERSION, DecisionProcessor
 from decision.training.common import evaluate_decisions, replace_directory, with_last
-from decision.training.group_rlcd import rlcd_loss, rlcd_sigma
+from decision.losses import RLCDLoss, RLCDLossConfig, linear_schedule
 from decision.utils import log
 
 # Stored in config.json. --resume compares every config key, so renaming or adding
@@ -191,6 +191,8 @@ def main():
             global_token_budget=args.token_budget, config=config)
     started, recent_sum, recent_n, accumulated = time.time(), 0., 0, 0
     recent_rlcd = [0., 0., 0.] if args.rlcd else []  # cross-entropy, RLCD term, reward; summed over records
+    # The Chinese-Jev preset is the term earlier --rlcd runs trained with, so they resume unchanged.
+    rlcd = RLCDLoss(RLCDLossConfig.chinese_jev(num_samples=args.rlcd_group_size)) if args.rlcd else None
     last_stream_stats = Counter()
 
     def checkpoint(epoch, batches_done, keep=False):
@@ -269,14 +271,18 @@ def main():
             sync = contextlib.nullcontext() if will_step else model.no_sync()
             with sync:
                 logits, targets = decision_model.score_decisions(local_batch, processor, letters, forward=model)
-                # Hard labels are one-hot special cases of the same distribution cross-entropy.
-                loss = -(targets * logits.log_softmax(-1)).sum(-1).mean()
                 if args.rlcd:
-                    sigma = rlcd_sigma(args.rlcd_sigma_start, args.rlcd_sigma_end, fraction)
-                    rl, reward = rlcd_loss(logits, targets, local_batch, sigma, args.rlcd_group_size)
-                    for i, value in enumerate((loss, rl, reward)):
+                    sigma = linear_schedule(args.rlcd_sigma_start, args.rlcd_sigma_end, fraction)
+                    sizes = torch.tensor([len(e["target"]) for e in local_batch], device=device)
+                    mask = torch.arange(logits.shape[-1], device=device)[None, :] < sizes[:, None]
+                    ordinal = torch.tensor([e["kind"] == "score" for e in local_batch], device=device)
+                    out = rlcd(logits, targets, mask, ordinal, sigma=sigma)
+                    for i, value in enumerate((out.ce, out.rlcd, out.reward)):
                         recent_rlcd[i] += value.item() * real_count
-                    loss = loss + rl
+                    loss = out.loss
+                else:
+                    # Hard labels are one-hot special cases of the same distribution cross-entropy.
+                    loss = -(targets * logits.log_softmax(-1)).sum(-1).mean()
                 if not torch.isfinite(loss):
                     raise FloatingPointError("non-finite distributed loss")
                 # Weight by real records so a long single-record micro-batch is not over-weighted.

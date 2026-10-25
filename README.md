@@ -738,7 +738,7 @@ python -m unittest discover -s tests
 
 - 本项目代码以 [MIT 许可证](LICENSE) 发布。
 - 改编自 hmm 的部分同样遵循 MIT 许可证，原始版权声明见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
-- `decision/rlcd.py` 改编自 Chinese-Jev，遵循 Apache-2.0，许可证全文见 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。
+- `scripts/train.py` 的可选 `--rlcd` 训练项改编自 Chinese-Jev（实现见 `decision/losses.py` 的 `RLCDLossConfig.chinese_jev()`），遵循 Apache-2.0，许可证全文见 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。
 - 基础模型 Qwen3.5-0.8B、Qwen3.5-2B 与 Qwen3.5-4B 遵循 Apache-2.0，导出的模型目录会保留其原始 `LICENSE`。
 - CJ-Dataset 与 CJ-Bench 的许可按数据来源分别适用（部分来源为非商业许可），本项目不授予任何额外的再分发权限。
 

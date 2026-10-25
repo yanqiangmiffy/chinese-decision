@@ -129,7 +129,7 @@ class RLCDLossConfig:
 
     @classmethod
     def chinese_jev(cls, **overrides) -> RLCDLossConfig:
-        """Settings that reproduce this repository's ``decision/rlcd.py`` term.
+        """Settings that reproduce the ``--rlcd`` term of earlier scripts/train.py runs (Chinese-Jev).
 
         Group size 4, log score floored at log(1e-4), batch-normalised advantages, and the
         RLCD term added to cross-entropy with weight 1. Anneal ``sigma`` from 0.4 to 0.1.

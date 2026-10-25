@@ -1,6 +1,6 @@
 # 校准决策模型：RLCD 训练伪代码
 
-本文是独立设计，不是 TypeSafe Jev 内部算法的复现（其损失函数未公开）。损失函数已实现为可运行的参考代码 [decision/rlcd_loss.py](../decision/rlcd_loss.py)，只依赖 PyTorch。数据、模型前向、分布式与存储部分保留为伪代码。生产训练器 [decision/rlcd.py](../decision/rlcd.py) 保持不变。
+本文是独立设计，不是 TypeSafe Jev 内部算法的复现（其损失函数未公开）。损失函数已实现为可运行的代码 [decision/losses.py](../decision/losses.py)，只依赖 PyTorch。数据、模型前向、分布式与存储部分保留为伪代码。`scripts/train.py --rlcd` 使用其中的 `RLCDLossConfig.chinese_jev()` 预设。
 
 ## 1. 损失定义
 
@@ -28,7 +28,7 @@ S(q, t) = sum_k t_k * log(q_k)                        # 对数评分
 | `RLCDLossConfig(rlcd_weight=0)` | 只有 CE | 必做基线 |
 | `RLCDLossConfig(estimator="reparam")` | 经 `z + sigma*eps` 直接反传 | 检查收益是否来自扰动评分目标 |
 | `RLCDLossConfig(estimator="reinforce")` | 奖励停止梯度，经高斯 log-density 乘留一优势 | RL 形式，主方案 |
-| `RLCDLossConfig.chinese_jev()` | reinforce，log 下限 −9.21，批内优势标准化 | 与 `decision/rlcd.py` 数值一致 |
+| `RLCDLossConfig.chinese_jev()` | reinforce，log 下限 −9.21，批内优势标准化 | 与早期 `scripts/train.py --rlcd` 的训练项数值一致，现由训练脚本直接使用 |
 
 REINFORCE 分支的核心只有四行：
 
@@ -298,14 +298,14 @@ L = -mean A * (log p(a) + log p(c))
 3. REINFORCE 的采样、奖励和基线停止梯度；reparam 的采样保留梯度。
 4. 只在校准集拟合温度，阈值锁定后报告独立测试集的风险；同时保留原始与校准后的结果。ECE 降低本身不能说明模型更有用。
 
-验证记录（2026-10-23，CPU）：[tests/test_rlcd_loss.py](../tests/test_rlcd_loss.py) 的 6 项检查全部通过：
+验证记录（2026-10-23，CPU）：[tests/test_rlcd_loss.py](../tests/test_rlcd_loss.py) 的检查全部通过，主要包括：
 
 - 目标分布在含 RPS 的评分下得分最高；
 - `rlcd_weight=0` 时与 `F.cross_entropy` 的软标签结果一致；
 - 两种估计器下 padding 梯度为 0，且每题梯度之和为 0；
 - 三种 reduction 一致；
 - 10 万样本下 REINFORCE 与 reparam 梯度的余弦相似度大于 0.999；
-- `chinese_jev()` 预设的损失与梯度和 `decision/rlcd.py` 加 CE 的结果一致（误差约 1e-6）。
+- `chinese_jev()` 预设的损失与梯度和测试中冻结的原始实现 `legacy_rlcd_term` 加 CE 的结果一致（误差约 1e-6）。
 
 `python examples/rlcd_loss.py` 会在自由 logits 的玩具任务上训练四种配置，确认都能稳定收敛到目标附近。在这个任务里 CE 本身已经最优，所以它不说明哪种方法在真实模型上校准得更好。
 

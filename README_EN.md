@@ -742,7 +742,7 @@ python -m unittest discover -s tests
 
 - This project's code is released under the [MIT License](LICENSE).
 - Portions adapted from hmm are also under the MIT License; the original notice is in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md).
-- `decision/rlcd.py` is adapted from Chinese-Jev under Apache-2.0; the full license text is in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
+- The optional `--rlcd` term of `scripts/train.py` is adapted from Chinese-Jev under Apache-2.0 (computed by `RLCDLossConfig.chinese_jev()` in `decision/losses.py`); the full license text is in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
 - The base models Qwen3.5-0.8B, Qwen3.5-2B and Qwen3.5-4B are under Apache-2.0; exported model directories keep its original `LICENSE`.
 - CJ-Dataset and CJ-Bench licenses are source-specific (some sources are non-commercial). This project grants no additional redistribution rights.
 

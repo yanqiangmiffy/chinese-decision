@@ -1,1 +1,1 @@
-"""Training helpers shared by the scripts: LoRA targets, decision evaluation, grouped RLCD."""
+"""Training helpers shared by the scripts: LoRA targets and decision evaluation (losses live in decision.losses)."""

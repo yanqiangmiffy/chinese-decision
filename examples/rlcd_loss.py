@@ -1,4 +1,4 @@
-"""Toy demo of the standard RLCD loss; the implementation lives in decision/rlcd_loss.py.
+"""Toy demo of the standard RLCD loss; the implementation lives in decision/losses.py.
 
 Run from the repository root:  python examples/rlcd_loss.py
 """
