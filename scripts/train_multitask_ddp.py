@@ -2,9 +2,9 @@
 
 Same model, heads, losses and batching rule as scripts/train_multitask.py, built for data that does
 not fit that script's habit of encoding every epoch up front:
-- rows stay as JSON lines; their token lengths are computed once (process pool, cached in the run
-  directory) and every epoch's length-sorted batches are encoded on the fly by DataLoader workers,
-  with choices and type lists re-shuffled per batch;
+- training lines stay on disk: a byte-offset index and the token lengths are built once (process pool,
+  cached under <out>/data/), and every epoch's length-sorted batches are read and encoded on the fly by
+  DataLoader workers, with choices and type lists re-shuffled per batch;
 - every rank takes its share of the same shuffled batch list; LoRA and span-head gradients are
   all-reduced by hand (the heads reach into the backbone past a DDP wrapper's hooks). LoRA
   gradients average over every micro-batch of the step, span-head gradients over its extraction
@@ -49,10 +49,12 @@ import os
 import random
 import shutil
 import time
+from array import array
 from collections import Counter
 from multiprocessing import Pool
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from peft import set_peft_model_state_dict
@@ -135,62 +137,163 @@ def make_processor(args):
     return DecisionProcessor.from_pretrained(args.base, max_span_units=args.max_span_units, echo=args.echo)
 
 
-# --- token lengths, computed once in a process pool ------------------------------------------------
+# --- training data on disk: a byte-offset index, lines read on demand ------------------------------
+#
+# Training files are never loaded whole. Rank 0 scans them once into an index (file id and byte offset
+# of every non-empty line) and computes token lengths in a process pool whose workers read their own
+# line ranges from disk; both are saved under <out>/data/ as .npy files. Every rank and DataLoader
+# worker then memory-maps the index and reads a line with one seek when its batch needs it, so memory
+# no longer grows with the data (CJ-Dataset is 41 GB of JSON lines).
+
+INDEX_CHUNK = 20000
+
+
+class LineStore:
+    """The non-empty lines of one or more JSONL files, read on demand through a byte-offset index."""
+
+    def __init__(self, paths, files, offsets):
+        self.paths, self.files, self.offsets = [str(p) for p in paths], files, offsets
+        self._handles, self._pid = {}, None
+
+    @classmethod
+    def build(cls, paths, limit=0):
+        """Scan `paths` (at most `limit` lines per file when set)."""
+        files, offsets = array("h"), array("q")
+        for number, path in enumerate(paths):
+            with open(path, "rb") as stream:
+                position, kept = 0, 0
+                for line in stream:
+                    if line.strip():
+                        files.append(number)
+                        offsets.append(position)
+                        kept += 1
+                        if limit and kept >= limit:
+                            break
+                    position += len(line)
+        return cls(paths, np.frombuffer(files, dtype=np.int16).copy(), np.frombuffer(offsets, dtype=np.int64).copy())
+
+    def save(self, prefix):
+        np.save(f"{prefix}.files.npy", self.files)
+        np.save(f"{prefix}.offsets.npy", self.offsets)
+
+    @classmethod
+    def load(cls, paths, prefix):
+        return cls(paths, np.load(f"{prefix}.files.npy", mmap_mode="r"), np.load(f"{prefix}.offsets.npy", mmap_mode="r"))
+
+    def __len__(self):
+        return len(self.offsets)
+
+    def __getitem__(self, i):
+        if self._pid != os.getpid():          # file handles are never shared across fork
+            self._handles, self._pid = {}, os.getpid()
+        number = int(self.files[i])
+        stream = self._handles.get(number)
+        if stream is None:
+            stream = self._handles[number] = open(self.paths[number], "rb")
+        stream.seek(int(self.offsets[i]))
+        return stream.readline()
+
+    def close(self):
+        for stream in self._handles.values():
+            stream.close()
+        self._handles = {}
+
+    def __getstate__(self):
+        return {"paths": self.paths, "files": self.files, "offsets": self.offsets}
+
+    def __setstate__(self, state):
+        self.__init__(state["paths"], state["files"], state["offsets"])
+
+
+def train_paths(args):
+    """Training files per task."""
+    return {"decision": [Path(args.data) / "decision/train.cases.jsonl"],
+            "replay": [Path(args.replay)] if args.replay else [],
+            "extraction": extraction_files(args.data, "train")}
+
 
 _WORKER = {}
 
 
-def _init_lengths(base, max_span_units, echo):
+def _init_lengths(base, max_span_units, echo, layout):
+    """`layout`: {task: (paths, index prefix)}; the index is memory-mapped, not copied into each worker."""
     _WORKER["processor"] = DecisionProcessor.from_pretrained(base, max_span_units=max_span_units, echo=echo)
+    _WORKER["stores"] = {task: LineStore.load(paths, prefix) for task, (paths, prefix) in layout.items()}
 
 
-def _lengths(task_lines):
-    """Per line: a list of example lengths (decisions) or one length (span rows); -1 = unusable."""
-    task, lines = task_lines
-    processor, out = _WORKER["processor"], []
-    for line in lines:
+def _lengths(job):
+    """Lengths of lines [start, end) of one task, read from disk by this worker.
+
+    Decisions give `(line, question, length)` triples; span rows one length per line. -1 = unusable.
+    """
+    task, start, end = job
+    processor, store, out = _WORKER["processor"], _WORKER["stores"][task], []
+    for line in range(start, end):
+        row = json.loads(store[line])
         if task == "extraction":
-            item = processor.encode_extraction(json.loads(line))
+            item = processor.encode_extraction(row)
             out.append(len(item["input_ids"]) if item is not None and item["cands"] else -1)
         else:
-            items = [processor.encode_example(e) for e in examples_for(json.loads(line), "general")]
-            out.append([len(i["input_ids"]) if i else -1 for i in items])
-    return out
+            for question, example in enumerate(examples_for(row, "general")):
+                item = processor.encode_example(example)
+                out.append((line, question, len(item["input_ids"]) if item else -1))
+    return task, start, out
 
 
-def compute_lengths(args, stores):
-    chunks = [(task, lines[i:i + 2000]) for task in TASKS for i in range(0, len(stores[task]), 2000)
-              for lines in [stores[task]]]
-    with Pool(args.length_procs, initializer=_init_lengths, initargs=(args.base, args.max_span_units, args.echo)) as pool:
-        results = pool.map(_lengths, chunks, chunksize=1)
-    lengths = {task: [] for task in TASKS}
-    for (task, _), values in zip(chunks, results):
-        lengths[task].extend(values)
-    return lengths
+def build_data(args, directory):
+    """Rank 0: index every training file and compute every token length; written as .npy files."""
+    started = time.time()
+    stores = {task: LineStore.build(paths, args.limit) for task, paths in train_paths(args).items()}
+    for task, store in stores.items():
+        store.save(directory / task)
+    log("data_index", seconds=round(time.time() - started), **{task: len(store) for task, store in stores.items()})
+    jobs = [(task, i, min(i + INDEX_CHUNK, len(store))) for task, store in stores.items()
+            for i in range(0, len(store), INDEX_CHUNK)]
+    results = {task: [] for task in TASKS}
+    layout = {task: (paths, directory / task) for task, paths in train_paths(args).items()}
+    initargs = (args.base, args.max_span_units, args.echo, layout)
+    with Pool(args.length_procs, initializer=_init_lengths, initargs=initargs) as pool:
+        for done, (task, start, out) in enumerate(pool.imap(_lengths, jobs, chunksize=1), 1):
+            results[task].append((start, out))
+            if done % 50 == 0:
+                log("lengths_progress", jobs_done=done, jobs=len(jobs), seconds=round(time.time() - started))
+    for task, parts in results.items():
+        flat = [value for _, out in sorted(parts, key=lambda part: part[0]) for value in out]
+        if task == "extraction":
+            np.save(directory / f"{task}.lengths.npy", np.asarray(flat, dtype=np.int32))
+        else:
+            triples = np.asarray(flat, dtype=np.int64).reshape(-1, 3)
+            np.save(directory / f"{task}.item_line.npy", triples[:, 0].astype(np.int64))
+            np.save(directory / f"{task}.item_question.npy", triples[:, 1].astype(np.int16))
+            np.save(directory / f"{task}.lengths.npy", triples[:, 2].astype(np.int32))
+    log("lengths", seconds=round(time.time() - started), **{t: len(stores[t]) for t in TASKS})
 
 
-def train_files(args):
-    files = [Path(args.data) / "decision/train.cases.jsonl", *extraction_files(args.data, "train")]
-    return files + ([Path(args.replay)] if args.replay else [])
-
-
-def load_lengths(args, out, rank, stores):
-    """Rank 0 computes (or reuses) the cache; the other ranks wait for its file."""
-    path = out / "lengths.json"
-    key = {"base": str(args.base), "data": str(Path(args.data).resolve()), "limit": args.limit, "echo": args.echo,
-           "files": {str(p): p.stat().st_size for p in train_files(args)}}
+def load_data(args, out, rank):
+    """Index and lengths for every task: rank 0 builds them (or reuses a matching build), the others wait."""
+    directory = out / "data"
+    marker = directory / "key.json"
+    key = {"base": str(args.base), "limit": args.limit, "echo": args.echo, "max_span_units": args.max_span_units,
+           "files": {task: [[str(Path(p).resolve()), Path(p).stat().st_size] for p in paths]
+                     for task, paths in train_paths(args).items()}}
     if rank == 0:
-        cached = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
-        if not cached or cached["key"] != key:
-            started = time.time()
-            write_json(path, {"key": key, **compute_lengths(args, stores)})
-            log("lengths", seconds=round(time.time() - started), **{t: len(stores[t]) for t in TASKS})
-    while True:
-        if path.exists():
-            cached = json.loads(path.read_text(encoding="utf-8"))
-            if cached["key"] == key:
-                return {task: cached[task] for task in TASKS}
+        current = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else None
+        if current != key:
+            if directory.exists():
+                shutil.rmtree(directory)
+            directory.mkdir(parents=True)
+            build_data(args, directory)
+            write_json(marker, key)            # written last: the build is complete
+    while not (marker.exists() and json.loads(marker.read_text(encoding="utf-8")) == key):
         time.sleep(5)
+    stores, items, lengths = {}, {}, {}
+    for task, paths in train_paths(args).items():
+        stores[task] = LineStore.load(paths, directory / task)
+        lengths[task] = np.load(directory / f"{task}.lengths.npy", mmap_mode="r")
+        if task != "extraction":
+            items[task] = (np.load(directory / f"{task}.item_line.npy", mmap_mode="r"),
+                           np.load(directory / f"{task}.item_question.npy", mmap_mode="r"))
+    return stores, items, lengths
 
 
 # --- batch plan --------------------------------------------------------------------------------
@@ -208,22 +311,18 @@ def length_batches(order, lengths, batch_size, budget):
     return batches
 
 
-def flatten_decisions(lengths_by_line):
-    """Per decision example: ((line, question), length)."""
-    items = [(line, q) for line, lengths in enumerate(lengths_by_line) for q in range(len(lengths))]
-    return items, [n for lengths in lengths_by_line for n in lengths]
-
-
 def epoch_plan(args, epoch, lengths, world):
     """One epoch's micro-batches for every rank, `[(task, indices, seed)]` per rank, equal counts across ranks.
 
-    `lengths[task]` holds one length per item (decision tasks already flattened per question).
+    `lengths[task]` holds one length per item (a decision item is one question of a line).
     """
     rng, batches = random.Random(f"{args.seed}:{epoch}"), []
     for task in TASKS:
         size = args.extraction_batch if task == "extraction" else args.decision_batch
-        usable = sorted((i for i, n in enumerate(lengths[task]) if n > 0), key=lambda i: lengths[task][i])
-        batches += [(task, b) for b in length_batches(usable, lengths[task], size, args.token_budget)]
+        values = np.asarray(lengths[task], dtype=np.int64)
+        usable = np.flatnonzero(values > 0)
+        order = usable[np.argsort(values[usable], kind="stable")]
+        batches += [(task, b) for b in length_batches(order.tolist(), values.tolist(), size, args.token_budget)]
     rng.shuffle(batches)
     per_rank = len(batches) // world
     plan = [(task, indices, f"{args.seed}:{epoch}:{k}") for k, (task, indices) in enumerate(batches[:per_rank * world])]
@@ -231,10 +330,10 @@ def epoch_plan(args, epoch, lengths, world):
 
 
 class Batches(torch.utils.data.Dataset):
-    """Encodes one planned micro-batch per item; each worker builds its own processor."""
+    """Encodes one planned micro-batch per item, reading its lines from disk; each worker builds its own processor."""
 
-    def __init__(self, plan, stores, decision_items, args):
-        self.plan, self.stores, self.decision_items = plan, stores, decision_items
+    def __init__(self, plan, stores, items, args):
+        self.plan, self.stores, self.items = plan, stores, items
         self.settings = (args.base, args.max_span_units, args.echo)
         self.processor = None
 
@@ -247,15 +346,16 @@ class Batches(torch.utils.data.Dataset):
             self.processor = DecisionProcessor.from_pretrained(base, max_span_units=units, echo=echo)
         task, indices, seed = self.plan[k]
         rng = random.Random(seed)
+        store = self.stores[task]
         if task == "extraction":
-            items = [self.processor.encode_extraction(json.loads(self.stores[task][i]), rng) for i in indices]
-            return task, self.processor.collate_extraction(items)
-        items = []
+            rows = [self.processor.encode_extraction(json.loads(store[i]), rng) for i in indices]
+            return task, self.processor.collate_extraction(rows)
+        lines, questions = self.items[task]
+        encoded = []
         for i in indices:
-            line, question = self.decision_items[task][i]
-            example = list(examples_for(json.loads(self.stores[task][line]), "general"))[question]
-            items.append(self.processor.encode_example(example, rng))
-        return task, items
+            example = list(examples_for(json.loads(store[int(lines[i])]), "general"))[int(questions[i])]
+            encoded.append(self.processor.encode_example(example, rng))
+        return task, encoded
 
 
 # --- losses, gradients and evaluation across ranks -------------------------------------------------
@@ -447,14 +547,8 @@ def main():
         write_json(out / "config.json", vars(args) | {"world_size": world})
 
     processor = make_processor(args)
-    stores = {"decision": read_lines(Path(args.data) / "decision/train.cases.jsonl", args.limit),
-              "replay": read_lines(args.replay, args.limit) if args.replay else [],
-              "extraction": [line for path in extraction_files(args.data, "train") for line in read_lines(path, args.limit)]}
-    # Before CUDA and NCCL start: the length pool forks.
-    raw_lengths = load_lengths(args, out, rank, stores)
-    decision_items, lengths = {}, {"extraction": raw_lengths["extraction"]}
-    for task in ("decision", "replay"):
-        decision_items[task], lengths[task] = flatten_decisions(raw_lengths[task])
+    # Before CUDA and NCCL start: the length pool forks. Training lines stay on disk.
+    stores, items, lengths = load_data(args, out, rank)
     torch.cuda.set_device(local)
     device = torch.device("cuda", local)
     if distributed:
@@ -492,7 +586,7 @@ def main():
     if rank == 0:
         log("training_start", world=world, steps=total, start_step=step, accumulate=args.accumulate, rlcd=args.rlcd,
             kl_weight=args.kl_weight if args.replay else 0.0,
-            items={t: sum(n > 0 for n in lengths[t]) for t in TASKS},
+            items={t: int((np.asarray(lengths[t]) > 0).sum()) for t in TASKS},
             micro_batches=dict(Counter(task for plan in plans for task, _, _ in plan)), none_shift=span_loss.none_shift)
 
     def dev_eval(checkpoint):
@@ -520,7 +614,7 @@ def main():
         done += steps_per_epoch[epoch]
         if skip >= len(plan):
             continue
-        loader = torch.utils.data.DataLoader(Batches(plan[skip:], stores, decision_items, args), batch_size=None,
+        loader = torch.utils.data.DataLoader(Batches(plan[skip:], stores, items, args), batch_size=None,
                                              shuffle=False, num_workers=args.workers,
                                              prefetch_factor=4 if args.workers else None)
         micro, extraction_count = 0, 0

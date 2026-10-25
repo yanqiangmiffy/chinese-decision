@@ -1,3 +1,4 @@
+import json
 import math
 import sys
 import unittest
@@ -86,6 +87,27 @@ class ReplayAllocationTests(unittest.TestCase):
         self.assertEqual(case["_meta"]["source_family"], "cj:legal")
         self.assertEqual(case["_meta"]["cj_source_family"], "c3")
         self.assertTrue(math.isfinite(len(case)))
+
+
+class LineStoreTests(unittest.TestCase):
+    def test_lines_are_read_on_demand_through_saved_offsets(self):
+        import pickle
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            a, b = Path(root) / "a.jsonl", Path(root) / "b.jsonl"
+            a.write_text('{"x": 1}\n\n{"x": "二"}\n', encoding="utf-8", newline="\n")
+            b.write_text('{"y": 3}\n{"y": 4}\n{"y": 5}\n', encoding="utf-8", newline="\n")
+            store = trainer.LineStore.build([a, b], limit=2)
+            self.assertEqual([json.loads(store[i]) for i in range(len(store))],
+                             [{"x": 1}, {"x": "二"}, {"y": 3}, {"y": 4}])      # empty lines skipped, 2 per file
+            store.save(Path(root) / "index")
+            loaded = trainer.LineStore.load([a, b], Path(root) / "index")
+            self.assertEqual(json.loads(loaded[3]), {"y": 4})
+            copy = pickle.loads(pickle.dumps(loaded))                         # as DataLoader/pool workers get it
+            self.assertEqual(json.loads(copy[1]), {"x": "二"})
+            for opened in (store, loaded, copy):
+                opened.close()
+            del loaded, copy                                                  # release the memory maps (Windows)
 
 
 if __name__ == "__main__":
