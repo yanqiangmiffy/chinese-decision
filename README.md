@@ -47,28 +47,13 @@
 ## 最新动态
 
 - 🧬 **2026-10-25**：发布 **chinese-decision-unified-0.8b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b)）。一份权重、两种读出：请求带 `questions` 走决策，带 `types` 走抽取；决策准确率没有因为加入抽取而下降（CJ-Bench 全量 **83.46%**，纯决策 0.8B 为 83.11%）。详见[统一模型](#统一模型)与[模型卡](docs/MODEL_CARD_UNIFIED_0_8B.md)。
-- 📄 **2026-10-23**：论文 **[arXiv:2610.23170](https://arxiv.org/abs/2610.23170)** 更新到 v2：补入训练完成的 2B 与新增的 4B（均附 Q8_0 版本），新增按母记录聚类的 bootstrap、校准、选择性预测与量化分析，并重新设计了版面。v1 提交于 2026-10-16。详见[论文](#论文)。
+- 📄 **2026-10-23**：论文 **[arXiv:2610.23170](https://arxiv.org/abs/2610.23170)** 更新到 v2：补入训练完成的 2B 与新增的 4B（均附 Q8_0 版本），新增按母记录聚类的 bootstrap、校准、选择性预测与量化分析，并重新设计了版面。v1 提交于 2026-10-16。
 - 🚀 **2026-10-21**：发布 **chinese-decision-4b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)）与 CPU 版 **chinese-decision-4b-gguf**（Q8_0，4.48 GB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf)）。4B 整体 ACC **85.97%**、专业平均 **84.00%**、ECE **1.00%**，4 个领域 × 3 种题型的 12 个组合全部高于 0.8B 与 2B；Q8_0 全量 ACC **85.99%**，与 BF16 首选项一致率 **99.19%**。各尺寸训练过程中的 checkpoint 评测统一整理到 [训练过程 checkpoint 评测](docs/TRAINING_HISTORY.md)。
 - 🔢 **2026-10-18**：新增分组淘汰接口 [`/v1/tournament`](#http-服务)，`choice` 问题的类别数不再受 A–Z 26 个字母限制（服务端默认上限 1024，由 `decision/tournament.py` 的 `MAX_CANDIDATES` 设定）。候选先随机分成每组不超过 16 个，各组前几名晋级决赛，不需要重新训练；GPU 与 CPU 服务都已支持。示例 [examples/tournament.json](examples/tournament.json) 有 41 个客服意图，在 GPU 服务上换用 10 条留言全部选对，每题 4 次前向、约 150 ms。
 - 🚀 **2026-10-17**：发布 **chinese-decision-2b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b)）与 CPU 版 **chinese-decision-2b-gguf**（Q8_0，2.01 GB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-2b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-2b-gguf)）。2B 整体 ACC **84.11%**、专业平均 **78.25%**、ECE **0.64%**；Q8_0 全量 ACC **84.11%**，与 BF16 首选项一致率 **99.00%**，CPU 检查见 [2B CPU 部署](docs/CPU_2B.md)。
 - 📊 **2026-10-17**：Qwen3.5-2B + LoRA + RLCD 完成 1 epoch 训练（13,048,000 条决策），训练配置、导出与来源诊断见 [2B 训练与交付记录](docs/TRAINING_2B.md)。
 - 🧪 **2026-10-15**：开源决策模型测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)：决策实验台、8 个应用场景、鲁棒性实验室、评测中心和性能压测，`docker compose up` 一条命令启动；可以直接接 GPU 服务（`scripts/serve_gpu.py`），也可以接 CPU 上的 GGUF 服务（`scripts/serve.py`）。
 - 🎉 **2026-10-15**：发布 **chinese-decision-0.8b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b)）与 **chinese-decision-0.8b-gguf**（Q8_0，812 MB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-0.8b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-0.8b-gguf)）。完整训练 1 epoch（13,048,000 条决策），CJ-Bench 通用领域准确率 **72.26%**、专业领域平均 **76.90%**；合并后在验证集的独立划分上拟合温度 T = 1.108。
-
-## 论文
-
-**Chinese Decision: A Family of Language Models for Single-Pass Probabilistic Decision-Making**
-
-Qiang Yan（中国科学院计算技术研究所）· cs.CL · [arXiv:2610.23170](https://arxiv.org/abs/2610.23170) · [PDF](https://arxiv.org/pdf/2610.23170)
-
-v1 提交于 2026-10-16，v2 修订于 2026-10-23（26 页、7 幅图、15 张表）。v2 补入训练完成的 2B 与新增的 4B 模型（均附 Q8_0 版本），新增按母记录聚类的 bootstrap、校准、选择性预测与量化分析，并重新设计了版面。
-
-论文把每个问题编译成共享的“指令 + 候选项”提示，一次前向读取末位候选字母的 logits 并在有效候选上归一化，不做自回归生成；接口覆盖布尔判断、类别选择和有序评分。三个成员基于 Qwen3.5 0.8B / 2B / 4B，在同样的 1,304.8 万条决策上各训练 1 个 epoch，发布时附带验证集拟合的温度与 Q8_0 量化版本。
-
-- **主要结果**：在 CJ-Bench 全量 307,900 条上，4B 整体 ACC 85.97%、通用领域 75.69%、医疗 / 法律 / 金融平均 84.00%，单一检查点在每个领域都高于论文中报告的所有基线，ECE 为 1.00%。
-- **规模的作用**：2B 与 4B 的数据、目标和最小 batch 相同，按母记录聚类的配对 bootstrap 显示 4B 在四个领域都有提升，法律 / 金融两个低资源领域最大（+8.5 / +7.1 个百分点）；2B 相对 0.8B 在法律上的提升在统计上没有分辨出来。
-- **附加分析**：单一全局温度会降低整体 ECE，但让部分领域更差；更大的成员对自己的错误排序更好，更适合选择性预测；合并 LoRA 与 Q8_0 量化各会改变 0.4–1.1% 的 top-1 预测，整体指标几乎不变。
-- **适用范围**：所有比较都基于单次训练和引入的基线数字。论文 v2 报告的是三个纯决策成员，[统一版](#统一模型)在其后发布，不在论文中。
 
 ## 模型
 
