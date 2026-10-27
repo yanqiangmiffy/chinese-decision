@@ -92,7 +92,7 @@ tasks:
 决策读出可以直接用 `transformers`；抽取读出需要本项目的 `decision` 包（跨度头的代码在里面）：
 
 ```bash
-pip install "chinese-decision[torch] @ git+https://github.com/yanqiangmiffy/chinese-decision.git@feat/classification-extraction"
+pip install "chinese-decision[torch] @ git+https://github.com/yanqiangmiffy/chinese-decision.git@main"
 ```
 
 推荐同时安装 `flash-linear-attention`，它为 Qwen3.5 的线性注意力层提供高效 kernel：
