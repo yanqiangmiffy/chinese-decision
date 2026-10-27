@@ -12,7 +12,9 @@
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-chinese--decision--4b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-4b)
 [![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--4b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)
 [![GGUF](https://img.shields.io/badge/GGUF-Q8__0%20%C2%B7%20CPU-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf)
-[![Unified](https://img.shields.io/badge/Unified-chinese--decision--unified--0.8b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b)
+[![Unified 0.8B](https://img.shields.io/badge/Unified-0.8B-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b)
+[![Unified 2B](https://img.shields.io/badge/Unified-2B-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-2b)
+[![CJ-IE](https://img.shields.io/badge/Data-CJ--IE-orange)](https://huggingface.co/datasets/quincyqiang/CJ-IE)
 [![Decision Studio](https://img.shields.io/badge/Platform-Decision%20Studio-black?logo=github)](https://github.com/yanqiangmiffy/chinese-decision-studio)
 
 📄 论文：[Chinese Decision: A Family of Language Models for Single-Pass Probabilistic Decision-Making](https://arxiv.org/abs/2610.23170)（arXiv:2610.23170，v2）
@@ -31,7 +33,7 @@
 
 本项目提供 [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)、[Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) 与 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) 三个尺寸，在 1,300 万条中文决策数据 [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) 上进行 LoRA 微调，方法改编自 [n4ze3m/hmm](https://github.com/n4ze3m/hmm)，并在 [Chinese-Jev](https://arxiv.org/abs/2609.36965) 提出的 CJ-Bench 上与其论文结果对比。方法、结果与分析见论文 [arXiv:2610.23170](https://arxiv.org/abs/2610.23170)。
 
-此外还有一个**统一版 [Chinese Decision Unified 0.8B](#统一模型)**：同一份 0.8B 权重在决策之外多一种读出，可以做类型化信息抽取（命名实体、关系、事件论元）。
+此外还有**统一模型**（[Unified 0.8B 与 Unified 2B](#统一模型)，4B 计划中）：同一份权重在决策之外多一种读出，可以做类型化信息抽取（命名实体、关系、事件论元）。
 
 **主要特点**
 
@@ -42,10 +44,12 @@
 - 📏 **概率经过校准**：发布权重附带验证集拟合的温度，整体 ECE 4B 为 **1.00%**、2B 为 **0.64%**、0.8B 为 **0.27%**，三个尺寸四个领域的 ECE 都低于论文中的模型。
 - 🪶 **GPU / CPU 部署**：三个尺寸均提供 BF16 与 Q8_0 GGUF。chinese-decision-4b-gguf 为 **4.48 GB**（比 BF16 小约 46.7%），CJ-Bench 全量 ACC **85.99%**，与 BF16 版的首选项一致率 **99.19%**；CPU 上用 llama.cpp 运行，不需要 PyTorch。
 - 🔌 **兼容 hmm / System One 接口**：提供开箱即用的 HTTP 服务。
-- 🧬 **统一版：一份权重，两种读出**：[Chinese Decision Unified 0.8B](#统一模型) 从原始 Qwen3.5-0.8B 联合训练，决策之外再提供类型化信息抽取。CJ-Bench 全量 ACC **83.46%**（纯决策 0.8B 为 83.11%），CJ-IE 测试集抽取 micro F1 **63.1**；两种读出都不生成文本。
+- 🧬 **统一模型：一份权重，两种读出**：[Unified 0.8B / 2B](#统一模型) 从原始 Qwen3.5 联合训练，决策之外再提供类型化信息抽取，两种读出都不生成文本。CJ-Bench 全量 ACC 分别为 **83.46% / 85.00%**（纯决策 0.8B / 2B 为 83.11% / 84.11%，T = 1），CJ-IE 测试集抽取 micro F1 为 **63.1 / 66.0**；4B 版计划中。
 
 ## 最新动态
 
+- 🧬 **2026-10-27**：发布 **chinese-decision-unified-2b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b)）。统一 2B 在 CJ-Bench 全量上 ACC **85.00%**（纯决策 2B 为 84.11%，同为 T = 1），CJ-IE 测试集抽取 micro F1 **66.0**（统一 0.8B 为 63.1）。详见[统一模型](#统一模型)与[模型卡](docs/MODEL_CARD_UNIFIED_2B.md)。
+- 🗂️ **2026-10-26**：公开抽取训练数据 **CJ-IE**（🤗 [Hugging Face](https://huggingface.co/datasets/quincyqiang/CJ-IE) · [ModelScope](https://www.modelscope.cn/datasets/quincyqiang/CJ-IE)）：把公开的中文 NER、关系和事件语料整理成统一格式（类型带定义），并派生选择 / 判断题。它是多个第三方语料的整理，部分来源为非商业许可，使用前请阅读[数据卡](docs/DATASET_CARD_CJ_IE.md)。
 - 🧬 **2026-10-25**：发布 **chinese-decision-unified-0.8b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b)）。一份权重、两种读出：请求带 `questions` 走决策，带 `types` 走抽取；决策准确率没有因为加入抽取而下降（CJ-Bench 全量 **83.46%**，纯决策 0.8B 为 83.11%）。详见[统一模型](#统一模型)与[模型卡](docs/MODEL_CARD_UNIFIED_0_8B.md)。
 - 📄 **2026-10-23**：论文 **[arXiv:2610.23170](https://arxiv.org/abs/2610.23170)** 更新到 v2：补入训练完成的 2B 与新增的 4B（均附 Q8_0 版本），新增按母记录聚类的 bootstrap、校准、选择性预测与量化分析，并重新设计了版面。v1 提交于 2026-10-16。
 - 🚀 **2026-10-21**：发布 **chinese-decision-4b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)）与 CPU 版 **chinese-decision-4b-gguf**（Q8_0，4.48 GB；🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf)）。4B 整体 ACC **85.97%**、专业平均 **84.00%**、ECE **1.00%**，4 个领域 × 3 种题型的 12 个组合全部高于 0.8B 与 2B；Q8_0 全量 ACC **85.99%**，与 BF16 首选项一致率 **99.19%**。各尺寸训练过程中的 checkpoint 评测统一整理到 [训练过程 checkpoint 评测](docs/TRAINING_HISTORY.md)。
@@ -66,52 +70,143 @@
 | Chinese Decision 4B | Qwen3.5-4B / CE + RLCD | BF16 / 8.41 GB | 1.024758 | [HF](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b) | [4B](docs/MODEL_CARD_4B.md) |
 | Chinese Decision 4B Q8_0 | 同一 4B 合并权重 | GGUF / 4.48 GB | 1.024758 | [HF](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf) | [4B GGUF](docs/MODEL_CARD_4B_GGUF.md) |
 | **Chinese Decision Unified 0.8B** | Qwen3.5-0.8B（原始底座）/ CE + RLCD，决策与抽取联合训练 | BF16 / 1.52 GB | 1.1326（仅决策读出） | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [Unified 0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md) |
+| **Chinese Decision Unified 2B** | Qwen3.5-2B（原始底座）/ CE + RLCD，决策与抽取联合训练 | BF16 / 3.79 GB | 1.0617（仅决策读出） | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) | [Unified 2B](docs/MODEL_CARD_UNIFIED_2B.md) |
+| Chinese Decision Unified 4B | Qwen3.5-4B / 计划中，尚未训练 | — | — | 尚未发布 | — |
 
-六个纯决策版本都已在 CJ-Bench 全量 307,900 条上完成评测（成绩见[评测结果](#评测结果)），全部支持 16384 tokens；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多时用 [`/v1/tournament`](#http-服务) 分组淘汰；大小为十进制 GB，不是运行内存。统一版同样在全量上评测（见[统一模型](#统一模型)），它的抽取读出只能用 PyTorch，没有 GGUF 版本。
+六个纯决策版本都已在 CJ-Bench 全量 307,900 条上完成评测（成绩见[评测结果](#评测结果)），全部支持 16384 tokens；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多时用 [`/v1/tournament`](#http-服务) 分组淘汰；大小为十进制 GB，不是运行内存。统一模型的 0.8B 和 2B 同样在全量上评测（见[统一模型](#统一模型)），抽取读出只能用 PyTorch，没有 GGUF 版本；统一 4B 计划中，发布后补充到本表。
 
-**怎么选**：GPU 上追求准确率用 4B BF16；需要兼顾延迟与显存时用 2B BF16；CPU 或内存受限时用 Q8_0 GGUF，不需要 PyTorch；对延迟和资源最敏感、或需要最低整体 ECE 时用 0.8B；同一份权重既要做决策、又要做信息抽取时用 Unified 0.8B。完整选型、分领域和外部基线见 [模型总览](docs/MODELS.md)。
+**怎么选**：GPU 上追求准确率用 4B BF16；需要兼顾延迟与显存时用 2B BF16；CPU 或内存受限时用 Q8_0 GGUF，不需要 PyTorch；对延迟和资源最敏感、或需要最低整体 ECE 时用 0.8B；同一份权重既要做决策、又要做信息抽取时用统一模型：要精度用 Unified 2B（决策准确率也高于纯决策 2B），要轻量用 Unified 0.8B；统一 4B 计划中。完整选型、分领域和外部基线见 [模型总览](docs/MODELS.md)。
 
 代码：[本仓库](https://github.com/yanqiangmiffy/chinese-decision)。测试平台：[Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)。
 
 ## 统一模型
 
-**Chinese Decision Unified 0.8B**（[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) · [模型卡](docs/MODEL_CARD_UNIFIED_0_8B.md)）：一份权重，两种读出。
-
-它在纯决策模型的基础上多提供一种读出——**类型化信息抽取**：给定文本和一组“类型名 + 说明”，直接返回每个实体的字符位置和概率，覆盖命名实体、关系（给定主体，抽客体）和事件论元。两种读出共用同一个骨干和同一组 LoRA 参数，只有最后的读出层不同：决策读最后位置的候选字母 logits，抽取用约 3M 参数的跨度头。两者都不生成文本。
+**一份权重，两种读出。** 统一模型在[纯决策模型](#模型)的基础上多提供一种读出——**类型化信息抽取**：给定文本和一组“类型名 + 说明”，直接返回每个实体的字符位置和概率，覆盖命名实体、关系（给定主体，抽客体）和事件论元。两种读出共用同一个骨干和同一组 LoRA 参数，只有最后的读出层不同；都是一次前向，**不生成文本**。
 
 ![统一模型：共享的 Qwen3.5 骨干，决策读出（候选字母 logits）和抽取读出（类型化跨度头）](assets/chinese-decision-unified-acl.png)
 
-- **读出由请求决定**：请求带 `questions` 走决策，带 `types` 走抽取。
-- **从原始底座联合训练**：不是在决策模型上继续微调。此前只用 CJ-IE 继续训练决策模型时，CJ-Bench 准确率从 83.11% 掉到 71.02%（法律 −27.9、金融 −20.2）；改为让 CJ-Dataset 的决策数据始终参与训练后，决策能力得以保留，过程见[统一模型与遗忘修复](docs/UNIFIED_MODEL.md)。
-- **单个 `model.safetensors`**：合并后的骨干和 `span_head.*` 在同一份权重里；只做决策时 `AutoModelForCausalLM.from_pretrained` 也能直接加载。
-- **抽取数据 CJ-IE**：32 个 NER 来源、DuIE / CMeIE 关系和 DuEE / FewFC 事件论元，共 573,294 条跨度行；另有 611,354 条决策行。构建方法见 [CJ-IE 数据说明](docs/IE_DATASET.md)。
-- **只能用 PyTorch 抽取**：GGUF / llama.cpp 没有跨度头。
+### 系列概览
 
-**决策：CJ-Bench 全量 307,900 条**（Transformers BF16，T = 1，对照纯决策 0.8B 同一测试集上的结果；ACC 单位 %）
+统一模型和纯决策模型一样按尺寸成系列，同一套训练配方、同一种结构、同一套 CJ-IE 数据，只有底座大小不同。下载与模型卡见[模型](#模型)。
 
-| 切分 | chinese-decision-0.8b | Unified 0.8B |
-|---|---:|---:|
-| 整体（micro） | 83.11 | **83.46** |
-| 四领域等权平均（macro） | 75.74 | **76.17** |
-| 通用 / 医疗 / 法律 / 金融 | 72.26 / 88.85 / 67.84 / 74.00 | **73.86** / 88.61 / 67.88 / 74.31 |
-| `noul` / `choice` / `score` | 94.96 / 78.32 / 56.45 | 94.88 / **79.01** / **57.17** |
-| 整体 ECE（T = 1） | 1.1 | 1.1 |
+| 模型 | 底座 | 跨度头 | 权重（BF16） | CJ-Bench 全量 ACC（T = 1） | CJ-IE 抽取 micro F1 | 状态 |
+|---|---|---:|---:|---:|---:|---|
+| Unified 0.8B | Qwen3.5-0.8B | 约 3.4M | 1.52 GB | 83.46% | 63.1 | 已发布（2026-10-25） |
+| Unified 2B | Qwen3.5-2B | 约 6.6M | 3.79 GB | **85.00%** | **66.0** | 已发布（2026-10-27） |
+| Unified 4B | Qwen3.5-4B | — | — | — | — | 计划中，尚未训练 |
 
-**CJ-IE 测试集**（各语料官方 dev / test，做过去泄漏；**内部评测集，不是公开基准**，数字不能和各语料的公开榜单直接比较）：
+**统一 2B 的决策准确率高于纯决策版 2B**（85.00% 对 84.11%，同为 T = 1），所以需要 2B 精度时，直接用统一版即可：决策和抽取一份权重都有。统一 4B 训练完成后，会按同一口径补充本节所有表格的 4B 列，并对照纯决策 4B（85.97%）。
 
-| 读出 | 指标 | 结果 |
-|---|---|---:|
-| 决策（84,894 条） | ACC | **90.65%** |
-| 抽取（35 个来源，232,291 个标注跨度，精确匹配） | 精确率 / 召回率 / micro F1 | 73.3 / 55.5 / **63.1** |
+### 与纯决策模型的区别
 
-抽取偏保守，精确率明显高于召回率，来源之间差别很大：Resume 88.1、CCKS2021 地址 85.8、IMCS21 医患对话 85.7 的 F1 较高；Weibo 37.2、MultiCoNER2 34.7、CMeIE 医学关系 28.2 较低。
+| | 纯决策模型 | 统一模型 |
+|---|---|---|
+| 读出 | 决策：`noul` / `choice` / `score` | 决策 + 类型化抽取 |
+| 由什么决定任务 | 请求都是决策 | 请求带 `questions` 走决策，带 `types` 走抽取（两者都带或都没有会报错） |
+| 训练起点 | 原始 Qwen3.5 + LoRA | 原始 Qwen3.5 + LoRA + 随机初始化的跨度头（一起训练） |
+| 训练数据 | [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) 13,048,000 条决策 | CJ-Dataset 决策 + [CJ-IE](#抽取数据-cj-ie)（决策 611,354 条 + 抽取跨度行 573,294 条） |
+| 尺寸 | 0.8B / 2B / 4B | 0.8B / 2B / 4B（计划中） |
+| 格式 | BF16 + Q8_0 GGUF | 只有 BF16；抽取读出只能用 PyTorch，没有 GGUF |
+| 服务入口 | `scripts/serve.py`、`scripts/serve_gpu.py` | `scripts/serve_unified.py` |
+| 为什么从原始底座训练 | — | 先试过在决策模型上继续训练抽取，CJ-Bench 准确率从 83.11% 掉到 71.02%（法律 −27.9、金融 −20.2）；让决策数据始终参与训练并从原始底座开始，决策能力得以保留，见[统一模型与遗忘修复](docs/UNIFIED_MODEL.md) |
 
-**调用**（`pip install -e ".[torch]"` 后，`DecisionPipeline` 用法同上文[Python 调用](#python-调用08b-示例)）：
+### 评测结果
+
+#### 决策：CJ-Bench 全量 307,900 条
+
+Transformers BF16，**概率使用 T = 1**（温度不改变选出的答案，所以 ACC 不受影响），ACC 单位 %。**加粗**为已有各列中的最优。
+
+| 切分 | 样本数 | 纯决策 0.8B | 统一 0.8B | 纯决策 2B | 统一 2B | 统一 4B |
+|---|---:|---:|---:|---:|---:|---:|
+| **整体（micro）** | 307,900 | 83.11 | 83.46 | 84.11 | **85.00** | — |
+| 四领域等权平均（macro） | — | 75.74 | 76.17 | 77.13 | **79.12** | — |
+| 通用 | 100,000 | 72.26 | 73.86 | 73.95 | **75.43** | — |
+| 医疗 | 200,000 | 88.85 | 88.61 | 89.50 | **90.03** | — |
+| 法律 | 4,300 | 67.84 | 67.88 | 69.05 | **73.42** | — |
+| 金融 | 3,600 | 74.00 | 74.31 | 76.03 | **77.61** | — |
+| `noul` | 134,577 | 94.96 | 94.88 | 95.09 | **95.24** | — |
+| `choice` | 134,577 | 78.32 | 79.01 | 80.14 | **81.68** | — |
+| `score` | 38,746 | 56.45 | 57.17 | 57.64 | **58.91** | — |
+| 整体 ECE（%，越低越好） | — | 1.1 | 1.1 | 1.5 | **0.9** | — |
+
+> 纯决策 2B 一列取自未合并 adapter 的评测（合并版准确率相同），所以 macro 与[主要结果](#主要结果)里发布权重的数字略有差别；纯决策模型用发布的默认温度时 ECE 更低。法律和金融样本少（4,300 / 3,600 条），这两个领域的 ECE 波动较大。完整的分领域 / 分题型 / ECE / NLL 见各模型卡：[统一 0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md#评测结果)、[统一 2B](docs/MODEL_CARD_UNIFIED_2B.md#评测结果)。
+
+#### CJ-IE 测试集
+
+CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**是内部评测集，不是公开基准**，数字不能和各语料的公开榜单直接比较。抽取按**精确匹配**计分（起止位置和类型都对才算对），35 个来源共 232,291 个标注跨度。
+
+| 指标 | 统一 0.8B | 统一 2B | 统一 4B |
+|---|---:|---:|---:|
+| 决策整体 ACC（84,894 条） | 90.65% | **91.30%** | — |
+| 旧能力保持（CJ 老来源 3,032 条）ACC | 91.51% | **91.88%** | — |
+| 抽取 micro 精确率 / 召回率 / F1 | 73.3 / 55.5 / 63.1 | 75.4 / 58.6 / **66.0** | — |
+| 抽取来源宏平均 F1（35 个） | 62.5 | **66.3** | — |
+| 其中 NER（31 个来源） | 64.0 | **67.5** | — |
+| 其中关系（DuIE、CMeIE） | 47.2 | **55.4** | — |
+| 其中事件论元（DuEE、FewFC） | 54.5 | **59.2** | — |
+
+抽取偏保守，精确率明显高于召回率，来源之间差别很大。几个有代表性的来源（F1）：
+
+| 来源 | 内容 | 统一 0.8B | 统一 2B | 统一 4B |
+|---|---|---:|---:|---:|
+| Resume | 简历实体 | 88.1 | 87.3 | — |
+| MSRA | 人名 / 地名 / 机构名 | 76.0 | **82.2** | — |
+| DuIE | 关系（客体） | 66.2 | **74.3** | — |
+| DuEE | 事件论元 | 56.3 | **62.2** | — |
+| Weibo | 社交媒体 | 37.2 | **52.6** | — |
+| CMeIE | 医学关系（客体） | 28.2 | **36.5** | — |
+| military_ner | 军事领域，类型没有单独的说明 | 0.0 | 0.0 | — |
+
+35 个来源里，统一 2B 有 30 个比统一 0.8B 好；类型没有说明的 `military_ner` 两个尺寸都是 0。完整的逐来源、逐类型指标见各模型卡。
+
+### 训练配置
+
+统一模型的各个尺寸之间配方相同，只有底座和 micro-batch 大小不同（2B 更大，每个 micro-batch 的 token 上限减半，因此总步数更多）。
+
+| 项目 | 统一 0.8B | 统一 2B | 统一 4B |
+|---|---|---|---|
+| 初始化 | 原始 Qwen3.5-0.8B | 原始 Qwen3.5-2B | 原始 Qwen3.5-4B |
+| 发布检查点 | step 14,504（1 epoch 最后一步） | step 15,304（1 epoch 最后一步） | — |
+| 每个 micro-batch 的 token 上限 | 24,576 | 12,288 | — |
+| 训练硬件 / 耗时 | 4 × A800，约 17 小时 | 4 × A800，约 26 小时 | — |
+| 校准温度（只作用于决策读出） | 1.1326 | 1.0617 | — |
+
+| 共同设置 | 内容 |
+|---|---|
+| 微调方式 | LoRA，r = 32；LoRA 学习率 1e-4，跨度头学习率 5e-4，前 100 步预热 |
+| 损失函数 | 两个读出都用 CE + RLCD（权重 1.0，4 个采样，σ 从 0.4 降到 0.1）；抽取里 none 跨度的权重为 0.2 |
+| 批次 | 每次更新累积 8 个 micro-batch × 4 卡；决策 micro-batch 32 条、抽取 16 行 |
+| 抽取布局 | 回显：文本先读一遍，再逐字重复一遍，跨度从重复的那份上取；跨度最宽 20 字 |
+| 模型选择 | 每 1,000 步在独立开发集上评估：决策准确率与抽取得分的均值；开发集来自 CJ-Dataset validation 和 CJ-IE dev，**从不读取 CJ-Bench** |
+| 温度校准 | 在 CJ-Dataset validation 的独立划分上，以硬标签交叉熵拟合单一温度 |
+| 导出 | 合并 LoRA，写出单个 `model.safetensors`（骨干 + `span_head.*`） |
+
+### 抽取数据 CJ-IE
+
+抽取这一半的训练数据来自 **CJ-IE**：把公开的中文 NER、关系和事件语料整理成统一格式，类型带定义。数据集和数据卡已公开：[Hugging Face](https://huggingface.co/datasets/quincyqiang/CJ-IE) · [ModelScope](https://www.modelscope.cn/datasets/quincyqiang/CJ-IE) · [数据卡](docs/DATASET_CARD_CJ_IE.md) · [构建说明](docs/IE_DATASET.md)。
+
+| 子集 | 内容 | train | dev | test |
+|---|---|---:|---:|---:|
+| `extraction` | 跨度行：NER（32 个来源）、关系客体（DuIE、CMeIE）、事件论元（DuEE、FewFC） | 573,294 | 11,647 | 85,041 |
+| `decision` | 派生的选择 / 判断题：实体类型、关系判断、事件类型、事件大类、公告字段 | 611,354 | 12,554 | 84,894 |
+| `structured` | 完整的实体 / 关系 / 事件标注，用于端到端评测 | 125,859 | 1,295 | 15,038 |
+
+CJ-IE 是多个第三方语料的整理，没有单一许可证，部分来源为非商业许可，使用前请阅读数据卡的[许可与使用限制](docs/DATASET_CARD_CJ_IE.md#许可与使用限制)。
+
+### 使用
+
+| 你想做的事 | 请求里带什么 | 返回 |
+|---|---|---|
+| 决策 | `state` + `questions`（`noul` / `choice` / `score`） | 每个候选的概率 |
+| 抽取 | `text` + `types`（`{名称: 说明}`），可选 `threshold` | 实体 `text` / `label` / `start` / `end` / `score` |
+| 关系抽取 | 主体固定，类型名写成“{主体}的{关系}”，说明写客体类型 | 客体的跨度 |
+| 事件抽取 | 先对每个事件类型问是 / 否问题，再用“触发词 + 角色”作为类型 | 触发词和论元 |
+| 意图 + 槽位 | 意图用决策，槽位用抽取，自己级联（训练里没有槽位数据，需要自己评测） | — |
 
 ```python
 from decision import DecisionPipeline
 
-pipe = DecisionPipeline.from_pretrained("models/chinese-decision-unified-0.8b", device="cuda")
+pipe = DecisionPipeline.from_pretrained("models/chinese-decision-unified-2b", device="cuda")   # 或 unified-0.8b
 
 pipe({"text": "收货地址：浙江省杭州市西湖区文三路90号东部软件园科技大厦A座1203室，联系人王小明。",
       "types": {"省份": "省级行政区划,省、自治区、直辖市,不含港澳台",
@@ -119,16 +214,32 @@ pipe({"text": "收货地址：浙江省杭州市西湖区文三路90号东部软
                 "道路": "有正式名称的道路,包括隧道、高架、街、弄、巷等",
                 "门牌号": "路号,如'000号'或'000弄',通常位于道路名称之后"},
       "threshold": 0.3})
-# {"task": "extraction", "entities": [{"text": "浙江省", "label": "省份", "start": 5, "end": 8, "score": 1.0}, ...]}
+# {"task": "extraction", "entities": [{"text": "浙江省", "label": "省份", "start": 5, "end": 8, "score": ...}, ...]}
 ```
 
-HTTP 服务把同一份权重暴露成 `POST /v1/decide`（决策，请求格式与 `/v1/systemone` 相同）、`POST /v1/extract`（抽取）和按请求形状自动选择的 `POST /v1/predict`，另有 `GET /v1/info`：
+`DecisionPipeline` 的决策用法同[Python 调用](#python-调用08b-示例)。HTTP 服务（`python scripts/serve_unified.py --model models/chinese-decision-unified-2b --port 8011`）一个进程同时提供两种读出，并兼容 `scripts/serve_gpu.py` 的决策接口，所以 Decision Studio、hmm / System One SDK 不用再起第二个服务：
 
-```bash
-python scripts/serve_unified.py --model models/chinese-decision-unified-0.8b --port 8011
-```
+| 接口 | 说明 |
+|---|---|
+| `POST /v1/systemone`、`POST /api/alpha/decisions` | 决策，hmm / System One 响应格式（`?debug=1` 附带 logits 和 token 数），与 `serve_gpu.py` 一致 |
+| `POST /v1/batch`、`POST /v1/compile`、`POST /v1/tournament` | 批量请求、只编译提示词、候选多于一题时的分组淘汰 |
+| `POST /v1/decide` | 决策，请求格式与 `/v1/systemone` 相同 |
+| `POST /v1/extract` | 抽取：`{"text", "types", "threshold"?}` |
+| `POST /v1/predict` | 两种请求都收，按请求形状自动选择 |
+| `GET /v1/info`、`GET /health`、`GET /v1/training` | 模型名、温度、是否支持抽取、GPU、运行统计；健康检查；训练进度 |
 
-**写类型时**：类型的“说明”比类型名重要得多。训练时每个类型都带一句来自标注规范的定义，只写类型名、没有定义的类型或训练里没出现过的新类型，召回会明显下降，甚至一个都抽不出。上线前请在自己的数据上用自己的类型测一遍。更多写法建议、完整的分来源指标和局限性见[模型卡](docs/MODEL_CARD_UNIFIED_0_8B.md)。
+### 类型怎么写
+
+**类型的“说明”比类型名重要得多。** 训练时每个类型都带一句来自标注规范的定义，模型学到的是“按定义找”，而不是“按名字猜”。
+
+| 写法 | 表现 | 建议 |
+|---|---|---|
+| 训练时的说明 | 召回最高 | 从训练时的类型组开始改，名称保持原样 |
+| 只写类型名 | 召回最低，相近类型分不开 | 至少写一句话定义，包括边界（什么不算） |
+| 训练里没有的新类型 | 基本抽不出来，或很不稳 | 上线前一定在自己的数据上测；能用训练过的类型表达就不要新造 |
+| 没有定义的类型 | `military_ner` 测试 F1 为 0，一个都没预测 | 同上 |
+
+更多写法建议、完整的分来源指标和局限性见模型卡：[统一 0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md) · [统一 2B](docs/MODEL_CARD_UNIFIED_2B.md)。
 
 ## 应用案例
 
@@ -434,6 +545,7 @@ hf download quincyqiang/chinese-decision-2b-gguf --local-dir models/chinese-deci
 hf download quincyqiang/chinese-decision-0.8b-gguf --local-dir models/chinese-decision-0.8b-gguf
 # 统一版：决策 + 信息抽取（只有 BF16，抽取需要 PyTorch）
 hf download quincyqiang/chinese-decision-unified-0.8b --local-dir models/chinese-decision-unified-0.8b
+hf download quincyqiang/chinese-decision-unified-2b --local-dir models/chinese-decision-unified-2b
 # 国内网络也可以用 ModelScope，仓库名相同，例如
 modelscope download --model quincyqiang/chinese-decision-4b --local_dir models/chinese-decision-4b
 modelscope download --model quincyqiang/chinese-decision-4b-gguf --local_dir models/chinese-decision-4b-gguf
@@ -771,8 +883,9 @@ chinese-decision/
 │   └── gguf/               # CPU 部署脚本（push / install / service）
 ├── docs/
 │   ├── MODELS.md           #   模型总览：选型、结果口径、外部基线
-│   ├── MODEL_CARD_*.md     #   七个模型卡（0.8B / 2B / 4B × BF16 / Q8_0，加统一版 0.8B）
+│   ├── MODEL_CARD_*.md     #   八个模型卡（0.8B / 2B / 4B × BF16 / Q8_0，加统一版 0.8B 与 2B）
 │   ├── UNIFIED_MODEL.md    #   统一模型：一份权重做分类和抽取，以及联合训练的遗忘修复
+│   ├── DATASET_CARD_CJ_IE.md #  CJ-IE 数据卡（HF / ModelScope 数据集的说明）
 │   ├── IE_DATASET.md       #   CJ-IE：中文信息抽取的多任务数据
 │   ├── MULTITASK_EXTRACTION.md # 分类 + 抽取的可行性实验
 │   ├── TRAINING_HISTORY.md #   各尺寸训练过程的 checkpoint 评测
@@ -801,7 +914,7 @@ python -m unittest discover -s tests
 - **延迟高于编码器方案**：0.8B / 2B / 4B 解码器的单条延迟高于约 322M 的 Chinese-Jev 编码器模型；4B 的 GPU 单条 p50 约 60 ms，CPU Q8_0 约 2 秒。
 - **`confidence` 不是准确率**：它只反映分布的尖锐程度。若要按阈值自动执行，请先在自己的数据上验证校准效果。
 - **标签含义来自上游任务**：例如医疗匹配类标签表示原任务中的匹配关系，并不代表医学正确性。请勿将模型输出作为医疗、法律或金融决策的唯一依据。
-- **统一版的抽取读出仍有明显短板**：CJ-IE 测试集 micro F1 为 63.1，精确率 73.3%、召回率 55.5%，边界要求精确匹配；没有类型说明或训练里没出现过的新类型可能一个都抽不出；社交媒体、细粒度新闻类型和医学关系较弱。抽取只能用 PyTorch，不支持 GGUF，也不支持意图 + 槽位的端到端填充。详见[统一版模型卡](docs/MODEL_CARD_UNIFIED_0_8B.md#局限性)。
+- **统一模型的抽取读出仍有明显短板**：CJ-IE 测试集上 micro F1 为 63.1（0.8B）/ 66.0（2B），精确率 73.3% / 75.4%、召回率 55.5% / 58.6%，边界要求精确匹配；没有类型说明或训练里没出现过的新类型可能一个都抽不出；社交媒体、细粒度新闻类型和医学关系较弱。抽取只能用 PyTorch，不支持 GGUF，也不支持意图 + 槽位的端到端填充。详见模型卡的局限性：[0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md#局限性)、[2B](docs/MODEL_CARD_UNIFIED_2B.md#局限性)。
 - **论文 v2 的比较基于单次训练和引入的基线数字**：没有多随机种子的方差估计，外部模型的数字取自原作者报告值，本项目未复现。
 - **仅针对中文训练**，不适用于开放式生成。
 - 本项目是 hmm 方法的中文适配，并不复现 Microsoft Decision、Jev 或 Chinese-Jev 的训练过程。
@@ -819,8 +932,8 @@ python -m unittest discover -s tests
 - 改编自 hmm 的部分同样遵循 MIT 许可证，原始版权声明见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
 - `scripts/train.py` 的可选 `--rlcd` 训练项改编自 Chinese-Jev（实现见 `decision/losses.py` 的 `RLCDLossConfig.chinese_jev()`），遵循 Apache-2.0，许可证全文见 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。
 - 基础模型 Qwen3.5-0.8B、Qwen3.5-2B 与 Qwen3.5-4B 遵循 Apache-2.0，导出的模型目录会保留其原始 `LICENSE`。
-- 统一版 Chinese Decision Unified 0.8B 的权重同样遵循 Apache-2.0（继承自 Qwen3.5-0.8B）。
-- CJ-Dataset 与 CJ-Bench 的许可按数据来源分别适用（部分来源为非商业许可）；统一版所用 CJ-IE 的 NER / 关系 / 事件语料也按来源分别适用，其中部分为非商业许可或许可不明，CJ-IE 本身没有随模型发布。本项目不授予任何额外的再分发权限。
+- 统一模型 Chinese Decision Unified 0.8B 与 2B 的权重同样遵循 Apache-2.0（分别继承自 Qwen3.5-0.8B 与 Qwen3.5-2B）。
+- CJ-Dataset 与 CJ-Bench 的许可按数据来源分别适用（部分来源为非商业许可）。统一模型所用的 CJ-IE 是多个 NER / 关系 / 事件语料的整理，没有单一许可证，部分来源为非商业许可或许可不明，使用前请阅读[数据卡](docs/DATASET_CARD_CJ_IE.md#许可与使用限制)并逐个来源核对。本项目不授予任何额外的再分发权限。
 
 ## 引用
 

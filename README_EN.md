@@ -12,7 +12,9 @@
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-chinese--decision--4b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-4b)
 [![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--4b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)
 [![GGUF](https://img.shields.io/badge/GGUF-Q8__0%20%C2%B7%20CPU-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf)
-[![Unified](https://img.shields.io/badge/Unified-chinese--decision--unified--0.8b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b)
+[![Unified 0.8B](https://img.shields.io/badge/Unified-0.8B-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b)
+[![Unified 2B](https://img.shields.io/badge/Unified-2B-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-2b)
+[![CJ-IE](https://img.shields.io/badge/Data-CJ--IE-orange)](https://huggingface.co/datasets/quincyqiang/CJ-IE)
 [![Decision Studio](https://img.shields.io/badge/Platform-Decision%20Studio-black?logo=github)](https://github.com/yanqiangmiffy/chinese-decision-studio)
 
 📄 Paper: [Chinese Decision: A Family of Language Models for Single-Pass Probabilistic Decision-Making](https://arxiv.org/abs/2610.23170) (arXiv:2610.23170, v2)
@@ -31,7 +33,7 @@ Many AI calls in real software are really judgments over a closed set: intent de
 
 The model family is built on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B), [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) and [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B), fine-tuned with LoRA on [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset), a corpus of 13 million Chinese decisions. The method is adapted from [n4ze3m/hmm](https://github.com/n4ze3m/hmm), and results are compared against the [Chinese-Jev](https://arxiv.org/abs/2609.36965) paper on its CJ-Bench benchmark. The method, results and analyses are in the paper, [arXiv:2610.23170](https://arxiv.org/abs/2610.23170).
 
-There is also a **unified model, [Chinese Decision Unified 0.8B](#unified-model)**: one 0.8B weight file that adds a second readout next to decisions, typed information extraction (named entities, relations, event arguments).
+There is also a **unified model** ([Unified 0.8B and Unified 2B](#unified-model); a 4B is planned): the same weight file adds a second readout next to decisions, typed information extraction (named entities, relations, event arguments).
 
 **Highlights**
 
@@ -42,10 +44,12 @@ There is also a **unified model, [Chinese Decision Unified 0.8B](#unified-model)
 - 📏 **Calibrated probabilities**: the released weights ship a validation-fitted temperature; overall ECE is **1.00%** for 4B, **0.64%** for 2B and **0.27%** for 0.8B, and all three sizes have lower ECE than every model in the paper in all four domains.
 - 🪶 **GPU and CPU**: every size ships BF16 and Q8_0 GGUF packages. chinese-decision-4b-gguf is **4.48 GB** (about 46.7% smaller than BF16), reaches **85.99%** on the full CJ-Bench, and agrees with BF16 on the top choice **99.19%** of the time; it runs on CPU through llama.cpp without PyTorch.
 - 🔌 **hmm / System One compatible API**: ships with a ready-to-run HTTP server.
-- 🧬 **Unified model, one weight file, two readouts**: [Chinese Decision Unified 0.8B](#unified-model) is trained jointly from the raw Qwen3.5-0.8B and adds typed information extraction to decisions. It reaches **83.46%** on the full CJ-Bench (decision-only 0.8B: 83.11%) and a micro F1 of **63.1** for extraction on the CJ-IE test set; neither readout generates text.
+- 🧬 **Unified model, one weight file, two readouts**: [Unified 0.8B / 2B](#unified-model) are trained jointly from the raw Qwen3.5 base and add typed information extraction to decisions; neither readout generates text. Full-CJ-Bench ACC is **83.46% / 85.00%** (decision-only 0.8B / 2B: 83.11% / 84.11%, T = 1) and extraction micro F1 on the CJ-IE test set is **63.1 / 66.0**; a 4B is planned.
 
 ## News
 
+- 🧬 **2026-10-27**: Released **chinese-decision-unified-2b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b)). Unified 2B reaches **85.00%** on the full CJ-Bench (decision-only 2B: 84.11%, both at T = 1) and an extraction micro F1 of **66.0** on the CJ-IE test set (Unified 0.8B: 63.1). See [Unified Model](#unified-model) and the [model card](docs/MODEL_CARD_UNIFIED_2B.md) (Chinese).
+- 🗂️ **2026-10-26**: Published the extraction training data **CJ-IE** (🤗 [Hugging Face](https://huggingface.co/datasets/quincyqiang/CJ-IE) · [ModelScope](https://www.modelscope.cn/datasets/quincyqiang/CJ-IE)): public Chinese NER, relation and event corpora in one format with type definitions, plus derived choice / yes-no questions. It is a compilation of third-party corpora and some sources are non-commercial; read the [dataset card](docs/DATASET_CARD_CJ_IE.md) (Chinese) before using it.
 - 🧬 **2026-10-25**: Released **chinese-decision-unified-0.8b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b)). One weight file, two readouts: a request with `questions` runs a decision, one with `types` runs extraction. Decision accuracy did not drop when extraction was added (**83.46%** on the full CJ-Bench vs 83.11% for the decision-only 0.8B). See [Unified Model](#unified-model) and the [model card](docs/MODEL_CARD_UNIFIED_0_8B.md) (Chinese).
 - 📄 **2026-10-23**: The paper **[arXiv:2610.23170](https://arxiv.org/abs/2610.23170)** was updated to v2: it now covers the finished 2B and the new 4B (both with Q8_0 builds) and adds parent-clustered bootstrap, calibration, selective-prediction and quantization analyses, in a redesigned layout. v1 was submitted on 2026-10-16.
 - 🚀 **2026-10-21**: Released **chinese-decision-4b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)) and the CPU build **chinese-decision-4b-gguf** (Q8_0, 4.48 GB; 🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf)). 4B reaches **85.97%** overall accuracy, an **84.00%** specialized average and **1.00%** ECE, and beats both 0.8B and 2B in all 12 domain × type cells; Q8_0 reaches **85.99%** on the full benchmark with **99.19%** top-choice agreement with BF16. Checkpoint results from training, for every size, now live in [Training checkpoint evaluations](docs/TRAINING_HISTORY.md) (Chinese).
@@ -66,52 +70,143 @@ There is also a **unified model, [Chinese Decision Unified 0.8B](#unified-model)
 | Chinese Decision 4B | Qwen3.5-4B / CE + RLCD | BF16 / 8.41 GB | 1.024758 | [HF](https://huggingface.co/quincyqiang/chinese-decision-4b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b) | [4B](docs/MODEL_CARD_4B.md) |
 | Chinese Decision 4B Q8_0 | Same merged 4B | GGUF / 4.48 GB | 1.024758 | [HF](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-4b-gguf) | [4B GGUF](docs/MODEL_CARD_4B_GGUF.md) |
 | **Chinese Decision Unified 0.8B** | Qwen3.5-0.8B (raw base) / CE + RLCD, decisions and extraction trained jointly | BF16 / 1.52 GB | 1.1326 (decision readout only) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [Unified 0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md) |
+| **Chinese Decision Unified 2B** | Qwen3.5-2B (raw base) / CE + RLCD, decisions and extraction trained jointly | BF16 / 3.79 GB | 1.0617 (decision readout only) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) | [Unified 2B](docs/MODEL_CARD_UNIFIED_2B.md) |
+| Chinese Decision Unified 4B | Qwen3.5-4B / planned, not trained yet | — | — | not released | — |
 
-All six decision-only variants have full CJ-Bench results on all 307,900 decisions (see [Evaluation](#evaluation)) and support 16,384 input tokens; one question holds 2–26 candidates (training covers 2–16), and larger `choice` questions go through [`/v1/tournament`](#http-server). Sizes are decimal GB, not runtime memory. The unified model is also evaluated on the full benchmark (see [Unified Model](#unified-model)); its extraction readout needs PyTorch and there is no GGUF build.
+All six decision-only variants have full CJ-Bench results on all 307,900 decisions (see [Evaluation](#evaluation)) and support 16,384 input tokens; one question holds 2–26 candidates (training covers 2–16), and larger `choice` questions go through [`/v1/tournament`](#http-server). Sizes are decimal GB, not runtime memory. The unified 0.8B and 2B are also evaluated on the full benchmark (see [Unified Model](#unified-model)); their extraction readout needs PyTorch and there are no GGUF builds. A unified 4B is planned and will be added to this table.
 
-**Which one?** On a GPU, use 4B BF16 for the highest accuracy, or 2B BF16 to balance latency and memory. On CPU or under memory limits, use a Q8_0 GGUF, which needs no PyTorch. If latency and resources matter most, or you need the lowest overall ECE, use 0.8B. If one weight file must do both decisions and information extraction, use Unified 0.8B. See [model selection and complete comparison](docs/MODELS.md) (Chinese).
+**Which one?** On a GPU, use 4B BF16 for the highest accuracy, or 2B BF16 to balance latency and memory. On CPU or under memory limits, use a Q8_0 GGUF, which needs no PyTorch. If latency and resources matter most, or you need the lowest overall ECE, use 0.8B. If one weight file must do both decisions and information extraction, use a unified model: Unified 2B for accuracy (it also beats the decision-only 2B on decisions), Unified 0.8B for a lighter footprint; a unified 4B is planned. See [model selection and complete comparison](docs/MODELS.md) (Chinese).
 
 Code: [this repository](https://github.com/yanqiangmiffy/chinese-decision). Test platform: [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio).
 
 ## Unified Model
 
-**Chinese Decision Unified 0.8B** ([Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) · [model card](docs/MODEL_CARD_UNIFIED_0_8B.md), Chinese): one weight file, two readouts.
-
-On top of the decision model it adds a second readout, **typed information extraction**: given a text and a set of "type name + description" pairs, it returns each entity's character span and probability, covering named entities, relations (given a subject, extract the object) and event arguments. Both readouts share one backbone and one set of LoRA parameters; only the last layer differs. Decisions read the logits of the candidate letters at the final position, and extraction uses a span head of about 3M parameters. Neither generates text.
+**One weight file, two readouts.** On top of the [decision-only models](#models), the unified model adds a second readout, **typed information extraction**: given a text and a set of "type name + description" pairs, it returns each entity's character span and probability, covering named entities, relations (given a subject, extract the object) and event arguments. Both readouts share one backbone and one set of LoRA parameters; only the last layer differs. Each is a single forward pass and **neither generates text**.
 
 ![Unified model: a shared Qwen3.5 backbone with a decision readout (candidate-letter logits) and an extraction readout (typed span head)](assets/chinese-decision-unified-acl.png)
 
-- **The request picks the readout**: `questions` runs a decision, `types` runs extraction.
-- **Trained jointly from the raw base**, not by fine-tuning the decision model. Continuing to train the decision model on CJ-IE alone dropped CJ-Bench accuracy from 83.11% to 71.02% (legal −27.9, finance −20.2); keeping CJ-Dataset decisions in every batch preserved decision ability. The process is in [Unified model and forgetting fix](docs/UNIFIED_MODEL.md) (Chinese).
-- **One `model.safetensors`**: the merged backbone and `span_head.*` live in the same file; for decisions alone, `AutoModelForCausalLM.from_pretrained` loads it too.
-- **Extraction data, CJ-IE**: 32 NER sources, DuIE / CMeIE relations and DuEE / FewFC event arguments, 573,294 span rows in total, plus 611,354 decision rows. See [CJ-IE dataset notes](docs/IE_DATASET.md) (Chinese).
-- **Extraction is PyTorch only**: GGUF / llama.cpp has no span head.
+### Family Overview
 
-**Decisions: full CJ-Bench, 307,900 items** (Transformers BF16, T = 1, against the decision-only 0.8B on the same test set; ACC in %)
+Like the decision-only models, the unified model comes in sizes: same recipe, same architecture, same CJ-IE data, only the base differs. Downloads and model cards are in [Models](#models).
 
-| Slice | chinese-decision-0.8b | Unified 0.8B |
-|---|---:|---:|
-| Overall (micro) | 83.11 | **83.46** |
-| Four-domain macro | 75.74 | **76.17** |
-| General / Medical / Legal / Finance | 72.26 / 88.85 / 67.84 / 74.00 | **73.86** / 88.61 / 67.88 / 74.31 |
-| `noul` / `choice` / `score` | 94.96 / 78.32 / 56.45 | 94.88 / **79.01** / **57.17** |
-| Overall ECE (T = 1) | 1.1 | 1.1 |
+| Model | Base | Span head | Weights (BF16) | Full CJ-Bench ACC (T = 1) | CJ-IE extraction micro F1 | Status |
+|---|---|---:|---:|---:|---:|---|
+| Unified 0.8B | Qwen3.5-0.8B | ~3.4M | 1.52 GB | 83.46% | 63.1 | Released (2026-10-25) |
+| Unified 2B | Qwen3.5-2B | ~6.6M | 3.79 GB | **85.00%** | **66.0** | Released (2026-10-27) |
+| Unified 4B | Qwen3.5-4B | — | — | — | — | Planned, not trained yet |
 
-**CJ-IE test set** (official dev / test splits of each corpus with leakage removed; an **internal evaluation set, not a public benchmark**, so the numbers are not comparable with the public leaderboards of the individual corpora):
+**Unified 2B is more accurate on decisions than the decision-only 2B** (85.00% vs 84.11%, both at T = 1), so when you need 2B accuracy you can use the unified model directly: one weight file does both. Once Unified 4B is trained, the 4B column of every table below will be filled in on the same protocol and compared with the decision-only 4B (85.97%).
 
-| Readout | Metric | Result |
-|---|---|---:|
-| Decision (84,894 items) | ACC | **90.65%** |
-| Extraction (35 sources, 232,291 gold spans, exact match) | precision / recall / micro F1 | 73.3 / 55.5 / **63.1** |
+### How It Differs from the Decision-Only Models
 
-Extraction is conservative, with precision well above recall, and varies a lot by source: Resume (F1 88.1), CCKS2021 addresses (85.8) and IMCS21 doctor-patient dialogues (85.7) are strong; Weibo (37.2), MultiCoNER2 (34.7) and CMeIE medical relations (28.2) are weak.
+| | Decision-only models | Unified models |
+|---|---|---|
+| Readouts | Decisions: `noul` / `choice` / `score` | Decisions + typed extraction |
+| What picks the task | Every request is a decision | `questions` runs a decision, `types` runs extraction (both or neither is an error) |
+| Starting point | Raw Qwen3.5 + LoRA | Raw Qwen3.5 + LoRA + a randomly initialized span head, trained together |
+| Training data | [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset), 13,048,000 decisions | CJ-Dataset decisions + [CJ-IE](#extraction-data-cj-ie) (611,354 decisions + 573,294 extraction span rows) |
+| Sizes | 0.8B / 2B / 4B | 0.8B / 2B / 4B (planned) |
+| Formats | BF16 + Q8_0 GGUF | BF16 only; extraction needs PyTorch, no GGUF |
+| Server | `scripts/serve.py`, `scripts/serve_gpu.py` | `scripts/serve_unified.py` |
+| Why train from the raw base | — | Continuing to train the decision model on extraction alone dropped CJ-Bench accuracy from 83.11% to 71.02% (legal −27.9, finance −20.2); keeping decision data in every batch and starting from the raw base preserved decision ability. See [Unified model and forgetting fix](docs/UNIFIED_MODEL.md) (Chinese). |
 
-**Usage** (after `pip install -e ".[torch]"`; `DecisionPipeline` works as in [Python](#python-08b-example) above):
+### Evaluation
+
+#### Decisions: full CJ-Bench, 307,900 items
+
+Transformers BF16, **probabilities at T = 1** (temperature does not change the chosen answer, so ACC is unaffected), ACC in %. **Bold** marks the best of the filled columns.
+
+| Slice | Items | Decision-only 0.8B | Unified 0.8B | Decision-only 2B | Unified 2B | Unified 4B |
+|---|---:|---:|---:|---:|---:|---:|
+| **Overall (micro)** | 307,900 | 83.11 | 83.46 | 84.11 | **85.00** | — |
+| Four-domain macro | — | 75.74 | 76.17 | 77.13 | **79.12** | — |
+| General | 100,000 | 72.26 | 73.86 | 73.95 | **75.43** | — |
+| Medical | 200,000 | 88.85 | 88.61 | 89.50 | **90.03** | — |
+| Legal | 4,300 | 67.84 | 67.88 | 69.05 | **73.42** | — |
+| Finance | 3,600 | 74.00 | 74.31 | 76.03 | **77.61** | — |
+| `noul` | 134,577 | 94.96 | 94.88 | 95.09 | **95.24** | — |
+| `choice` | 134,577 | 78.32 | 79.01 | 80.14 | **81.68** | — |
+| `score` | 38,746 | 56.45 | 57.17 | 57.64 | **58.91** | — |
+| Overall ECE (%, lower is better) | — | 1.1 | 1.1 | 1.5 | **0.9** | — |
+
+> The decision-only 2B column comes from an evaluation of the unmerged adapter (the merged model has the same accuracy), so its macro differs slightly from the released-weights numbers in [Main Results](#main-results); the decision-only models have lower ECE with their released default temperatures. Legal and finance have few items (4,300 / 3,600), so their ECE is noisy. Complete per-domain / per-type / ECE / NLL results are in the model cards: [Unified 0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md#评测结果), [Unified 2B](docs/MODEL_CARD_UNIFIED_2B.md#评测结果) (Chinese).
+
+#### CJ-IE test set
+
+The CJ-IE test set is built from the official dev / test splits of each corpus with leakage removed. It is an **internal evaluation set, not a public benchmark**, so the numbers are not comparable with the public leaderboards of the individual corpora. Extraction is scored by **exact match** (start, end and type must all be right) over 232,291 gold spans from 35 sources.
+
+| Metric | Unified 0.8B | Unified 2B | Unified 4B |
+|---|---:|---:|---:|
+| Decision ACC overall (84,894 items) | 90.65% | **91.30%** | — |
+| Old-ability retention (3,032 older CJ items) ACC | 91.51% | **91.88%** | — |
+| Extraction micro precision / recall / F1 | 73.3 / 55.5 / 63.1 | 75.4 / 58.6 / **66.0** | — |
+| Extraction source-macro F1 (35 sources) | 62.5 | **66.3** | — |
+| of which NER (31 sources) | 64.0 | **67.5** | — |
+| of which relations (DuIE, CMeIE) | 47.2 | **55.4** | — |
+| of which event arguments (DuEE, FewFC) | 54.5 | **59.2** | — |
+
+Extraction is conservative, with precision well above recall, and varies a lot by source. A few representative sources (F1):
+
+| Source | Content | Unified 0.8B | Unified 2B | Unified 4B |
+|---|---|---:|---:|---:|
+| Resume | résumé entities | 88.1 | 87.3 | — |
+| MSRA | person / location / organization | 76.0 | **82.2** | — |
+| DuIE | relations (object) | 66.2 | **74.3** | — |
+| DuEE | event arguments | 56.3 | **62.2** | — |
+| Weibo | social media | 37.2 | **52.6** | — |
+| CMeIE | medical relations (object) | 28.2 | **36.5** | — |
+| military_ner | military domain, types without descriptions | 0.0 | 0.0 | — |
+
+Unified 2B beats Unified 0.8B on 30 of the 35 sources; `military_ner`, whose types have no description, is 0 at both sizes. Complete per-source and per-type metrics are in the model cards.
+
+### Training
+
+All sizes of the unified model share one recipe; only the base and the micro-batch size differ (the 2B is larger, so the per-micro-batch token cap is halved and the run has more steps).
+
+| Item | Unified 0.8B | Unified 2B | Unified 4B |
+|---|---|---|---|
+| Initialization | Raw Qwen3.5-0.8B | Raw Qwen3.5-2B | Raw Qwen3.5-4B |
+| Released checkpoint | step 14,504 (last step of 1 epoch) | step 15,304 (last step of 1 epoch) | — |
+| Tokens per micro-batch (cap) | 24,576 | 12,288 | — |
+| Hardware / time | 4 × A800, about 17 h | 4 × A800, about 26 h | — |
+| Calibration temperature (decision readout only) | 1.1326 | 1.0617 | — |
+
+| Shared setting | Value |
+|---|---|
+| Fine-tuning | LoRA, r = 32; LoRA lr 1e-4, span-head lr 5e-4, 100 warm-up steps |
+| Loss | CE + RLCD for both readouts (weight 1.0, 4 samples, σ from 0.4 to 0.1); weight 0.2 for none spans in extraction |
+| Batch | 8 micro-batches × 4 GPUs per update; 32 decisions or 16 extraction rows per micro-batch |
+| Extraction layout | Echo: the text is read once, then repeated character by character, and spans are taken from the repeated copy; spans are at most 20 characters wide |
+| Model selection | Every 1,000 steps on an independent dev set: the mean of decision accuracy and the extraction score; the dev set comes from CJ-Dataset validation and CJ-IE dev, and **CJ-Bench is never read** |
+| Calibration | One temperature fitted by hard-label cross entropy on an independent split of CJ-Dataset validation |
+| Export | LoRA merged into a single `model.safetensors` (backbone + `span_head.*`) |
+
+### Extraction Data: CJ-IE
+
+The extraction half of the training data is **CJ-IE**: public Chinese NER, relation and event corpora in one format, with type definitions attached. The dataset and its card are public: [Hugging Face](https://huggingface.co/datasets/quincyqiang/CJ-IE) · [ModelScope](https://www.modelscope.cn/datasets/quincyqiang/CJ-IE) · [dataset card](docs/DATASET_CARD_CJ_IE.md) · [build notes](docs/IE_DATASET.md) (Chinese).
+
+| Subset | Content | train | dev | test |
+|---|---|---:|---:|---:|
+| `extraction` | Span rows: NER (32 sources), relation objects (DuIE, CMeIE), event arguments (DuEE, FewFC) | 573,294 | 11,647 | 85,041 |
+| `decision` | Derived choice / yes-no questions: entity type, relation, event type, event category, announcement fields | 611,354 | 12,554 | 84,894 |
+| `structured` | Full entity / relation / event annotations for end-to-end evaluation | 125,859 | 1,295 | 15,038 |
+
+CJ-IE is a compilation of third-party corpora with no single license, and some sources are non-commercial; read the [License and usage limits](docs/DATASET_CARD_CJ_IE.md#许可与使用限制) of the dataset card before using it.
+
+### Usage
+
+| What you want | What the request carries | What comes back |
+|---|---|---|
+| Decision | `state` + `questions` (`noul` / `choice` / `score`) | A probability per candidate |
+| Extraction | `text` + `types` (`{name: description}`), optional `threshold` | Entities with `text` / `label` / `start` / `end` / `score` |
+| Relation extraction | Fix the subject, write the type name as "{subject}'s {relation}" and describe the object type in the description | Object spans |
+| Event extraction | Ask a yes/no question per event type, then use "trigger + roles" as the types | Triggers and arguments |
+| Intent + slots | Intent via decisions, slots via extraction, cascaded by you (no slot data in training, so evaluate it yourself) | — |
 
 ```python
 from decision import DecisionPipeline
 
-pipe = DecisionPipeline.from_pretrained("models/chinese-decision-unified-0.8b", device="cuda")
+pipe = DecisionPipeline.from_pretrained("models/chinese-decision-unified-2b", device="cuda")   # or unified-0.8b
 
 pipe({"text": "收货地址：浙江省杭州市西湖区文三路90号东部软件园科技大厦A座1203室，联系人王小明。",
       "types": {"省份": "省级行政区划,省、自治区、直辖市,不含港澳台",
@@ -119,16 +214,32 @@ pipe({"text": "收货地址：浙江省杭州市西湖区文三路90号东部软
                 "道路": "有正式名称的道路,包括隧道、高架、街、弄、巷等",
                 "门牌号": "路号,如'000号'或'000弄',通常位于道路名称之后"},
       "threshold": 0.3})
-# {"task": "extraction", "entities": [{"text": "浙江省", "label": "省份", "start": 5, "end": 8, "score": 1.0}, ...]}
+# {"task": "extraction", "entities": [{"text": "浙江省", "label": "省份", "start": 5, "end": 8, "score": ...}, ...]}
 ```
 
-The HTTP server exposes the same weights as `POST /v1/decide` (decisions, same request format as `/v1/systemone`), `POST /v1/extract` (extraction) and `POST /v1/predict` (picks by request shape), plus `GET /v1/info`:
+Decisions work as in [Python](#python-08b-example). One process of the HTTP server (`python scripts/serve_unified.py --model models/chinese-decision-unified-2b --port 8011`) serves both readouts and is compatible with the decision API of `scripts/serve_gpu.py`, so Decision Studio and the hmm / System One SDKs do not need a second service:
 
-```bash
-python scripts/serve_unified.py --model models/chinese-decision-unified-0.8b --port 8011
-```
+| Endpoint | Description |
+|---|---|
+| `POST /v1/systemone`, `POST /api/alpha/decisions` | Decisions in the hmm / System One response format (`?debug=1` adds logits and token counts), same as `serve_gpu.py` |
+| `POST /v1/batch`, `POST /v1/compile`, `POST /v1/tournament` | Batched requests, prompt compilation only, grouped rounds for questions with more candidates than one prompt holds |
+| `POST /v1/decide` | Decisions, same request format as `/v1/systemone` |
+| `POST /v1/extract` | Extraction: `{"text", "types", "threshold"?}` |
+| `POST /v1/predict` | Accepts both request shapes and picks by shape |
+| `GET /v1/info`, `GET /health`, `GET /v1/training` | Model name, temperature, whether extraction is available, GPU, run statistics; health check; training progress |
 
-**Writing types**: the description matters far more than the type name. During training each type carried a definition taken from the annotation guideline; types with only a name, no definition, or types never seen in training lose recall sharply and may extract nothing at all. Test your own types on your own data before relying on them. More writing advice, per-source metrics and limitations are in the [model card](docs/MODEL_CARD_UNIFIED_0_8B.md).
+### Writing Types
+
+**The description of a type matters far more than its name.** During training each type carried a definition taken from the annotation guideline, so the model learns to "find by definition", not to "guess by name".
+
+| What you write | Behaviour | Advice |
+|---|---|---|
+| The training-time description | Highest recall | Start from the training-time type set, keep the names, and adjust the descriptions |
+| Only the type name | Lowest recall; similar types are not separated | Add at least one sentence of definition, including boundaries (what does not count) |
+| A new type never seen in training | Mostly not extracted, or unstable | Test on your own data before relying on it; prefer types the model was trained on |
+| A type without a definition | `military_ner` scores F1 0 on the test set and nothing is predicted | Same as above |
+
+More writing advice, complete per-source metrics and limitations are in the model cards: [Unified 0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md) · [Unified 2B](docs/MODEL_CARD_UNIFIED_2B.md) (Chinese).
 
 ## Showcase
 
@@ -434,6 +545,7 @@ hf download quincyqiang/chinese-decision-2b-gguf --local-dir models/chinese-deci
 hf download quincyqiang/chinese-decision-0.8b-gguf --local-dir models/chinese-decision-0.8b-gguf
 # Unified: decisions + information extraction (BF16 only, extraction needs PyTorch)
 hf download quincyqiang/chinese-decision-unified-0.8b --local-dir models/chinese-decision-unified-0.8b
+hf download quincyqiang/chinese-decision-unified-2b --local-dir models/chinese-decision-unified-2b
 # or from ModelScope (same repository names), e.g.
 modelscope download --model quincyqiang/chinese-decision-4b --local_dir models/chinese-decision-4b
 modelscope download --model quincyqiang/chinese-decision-4b-gguf --local_dir models/chinese-decision-4b-gguf
@@ -775,8 +887,9 @@ chinese-decision/
 │   └── gguf/               # CPU deployment (push / install / service)
 ├── docs/
 │   ├── MODELS.md           #   model overview: selection, protocol, external baselines
-│   ├── MODEL_CARD_*.md     #   seven model cards (0.8B / 2B / 4B × BF16 / Q8_0, plus unified 0.8B)
+│   ├── MODEL_CARD_*.md     #   eight model cards (0.8B / 2B / 4B × BF16 / Q8_0, plus unified 0.8B and 2B)
 │   ├── UNIFIED_MODEL.md    #   unified model: one weight file for classification and extraction, joint-training forgetting fix
+│   ├── DATASET_CARD_CJ_IE.md #  CJ-IE dataset card (the HF / ModelScope dataset page)
 │   ├── IE_DATASET.md       #   CJ-IE: multi-task Chinese information-extraction data
 │   ├── MULTITASK_EXTRACTION.md # feasibility experiments for classification + extraction
 │   ├── TRAINING_HISTORY.md #   checkpoint evaluations during training, all sizes
@@ -805,7 +918,7 @@ python -m unittest discover -s tests
 - **Slower than encoder models**: the 0.8B / 2B / 4B decoders have higher single-request latency than the roughly 322M Chinese-Jev encoder; 4B takes about 60 ms per request on GPU and about 2 s with Q8_0 on CPU.
 - **`confidence` is not accuracy**: it only measures how sharp the distribution is. Before acting automatically on a threshold, check calibration on your own data.
 - **Label semantics follow the upstream tasks**: for example, medical matching labels describe the original matching task and do not imply medical correctness. Do not use model outputs as the sole basis for medical, legal, or financial decisions.
-- **The unified model's extraction readout has clear weak spots**: micro F1 on the CJ-IE test set is 63.1, with 73.3% precision and 55.5% recall, and boundaries must match exactly. Types without a description, or new types unseen in training, may extract nothing; social media, fine-grained news types and medical relations are weak. Extraction needs PyTorch (no GGUF) and there is no end-to-end intent + slot filling. See the [unified model card](docs/MODEL_CARD_UNIFIED_0_8B.md#局限性) (Chinese).
+- **The unified models' extraction readout has clear weak spots**: micro F1 on the CJ-IE test set is 63.1 (0.8B) / 66.0 (2B), with 73.3% / 75.4% precision and 55.5% / 58.6% recall, and boundaries must match exactly. Types without a description, or new types unseen in training, may extract nothing; social media, fine-grained news types and medical relations are weak. Extraction needs PyTorch (no GGUF) and there is no end-to-end intent + slot filling. See the limitations in the model cards: [0.8B](docs/MODEL_CARD_UNIFIED_0_8B.md#局限性), [2B](docs/MODEL_CARD_UNIFIED_2B.md#局限性) (Chinese).
 - **Paper v2 comparisons rest on single training runs and imported baselines**: there is no variance estimate across random seeds, and external numbers are the original authors' reported values, not reproduced here.
 - **Trained for Chinese only**, and not suited to open-ended generation.
 - This project is a Chinese adaptation of the hmm method. It does not reproduce the training of Microsoft Decision, Jev, or Chinese-Jev.
@@ -823,8 +936,8 @@ python -m unittest discover -s tests
 - Portions adapted from hmm are also under the MIT License; the original notice is in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md).
 - The optional `--rlcd` term of `scripts/train.py` is adapted from Chinese-Jev under Apache-2.0 (computed by `RLCDLossConfig.chinese_jev()` in `decision/losses.py`); the full license text is in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
 - The base models Qwen3.5-0.8B, Qwen3.5-2B and Qwen3.5-4B are under Apache-2.0; exported model directories keep its original `LICENSE`.
-- The weights of the unified model, Chinese Decision Unified 0.8B, are also under Apache-2.0 (inherited from Qwen3.5-0.8B).
-- CJ-Dataset and CJ-Bench licenses are source-specific (some sources are non-commercial); so are the NER / relation / event corpora behind CJ-IE used by the unified model, some of which are non-commercial or have unclear terms, and CJ-IE itself is not released with the model. This project grants no additional redistribution rights.
+- The weights of the unified models, Chinese Decision Unified 0.8B and 2B, are also under Apache-2.0 (inherited from Qwen3.5-0.8B and Qwen3.5-2B).
+- CJ-Dataset and CJ-Bench licenses are source-specific (some sources are non-commercial). CJ-IE, used by the unified models, is a compilation of NER / relation / event corpora with no single license; some sources are non-commercial or have unclear terms, so read the [dataset card](docs/DATASET_CARD_CJ_IE.md#许可与使用限制) (Chinese) and check each source before use. This project grants no additional redistribution rights.
 
 ## Citation
 
