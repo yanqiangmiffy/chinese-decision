@@ -34,6 +34,7 @@ tasks:
 [GitHub 代码](https://github.com/yanqiangmiffy/chinese-decision) ·
 [测试平台 Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) ·
 [纯决策版 chinese-decision-0.8b](https://huggingface.co/quincyqiang/chinese-decision-0.8b) ·
+[2B 统一模型](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) ·
 [基础模型 Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) ·
 [训练数据 CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) ·
 [评测集 CJ-Bench](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
@@ -43,6 +44,21 @@ tasks:
 > A single 0.8B Chinese model with one weight file and two readouts. Given a context and candidates it returns a probability per candidate (`noul` / `choice` / `score` decisions); given a text and a set of entity types (name + description) it returns typed character spans with positions and probabilities. Neither readout generates tokens. Trained from raw Qwen3.5-0.8B on CJ-Dataset (decisions) and CJ-IE (NER, relation and event extraction). On the full CJ-Bench (307,900 items) it keeps the decision accuracy of the decision-only model (83.46% vs 83.11%).
 
 ![统一模型：共享的 Qwen3.5 骨干，决策读出（候选字母 logits）和抽取读出（类型化跨度头）](../assets/chinese-decision-unified-acl.png)
+
+## 模型系列
+
+统一模型有两个尺寸，**训练配方、模型结构和 CJ-IE 数据完全相同**，只有底座大小不同：
+
+| | **0.8B 统一（本模型）** | 2B 统一 |
+|---|---|---|
+| 仓库 | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) |
+| 底座 | Qwen3.5-0.8B | Qwen3.5-2B |
+| 权重文件 | 单个 `model.safetensors`，约 1.5 GB | 单个 `model.safetensors`，约 3.8 GB |
+| CJ-Bench 全量准确率（T = 1） | 83.46% | **85.00%** |
+| CJ-IE 测试集决策准确率 | 90.65% | **91.30%** |
+| CJ-IE 测试集抽取 micro F1 | 63.1 | **66.0** |
+
+对延迟和显存敏感时用 0.8B；需要更高的决策和抽取精度时用 2B（[2B 模型卡](MODEL_CARD_UNIFIED_2B.md)）。只做决策、不需要抽取时，还有纯决策版：[chinese-decision-0.8b](MODEL_CARD_0_8B.md)。
 
 ## 简介
 
