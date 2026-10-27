@@ -195,7 +195,7 @@ python scripts/serve_unified.py --model chinese-decision-unified-0.8b --port 801
 | `POST /v1/extract` | 抽取：`{"text", "types": {名称: 说明}, "threshold"?}`，返回带位置和概率的实体 |
 | `GET /v1/info` | 模型名、温度、`can_extract`、GPU、运行统计 |
 
-接入测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio)：把服务地址填到平台的 `EXTRACTION_BASE_URL`，决策实验台会出现“抽取”模式，场景库多出信息抽取案例馆、事件抽取流水线和三元组知识图谱三个场景。
+这个服务同时兼容 `scripts/serve_gpu.py` 的决策接口：`POST /v1/systemone`（`?debug=1` 附带 logits）、`/api/alpha/decisions`、`/v1/batch`、`/v1/compile`、`/v1/tournament`，以及 `/health`、`/v1/info`（没有训练进度和热更新）。所以**只部署它一个**就够了：测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) 把 `DECISION_BASE_URL` 指向它，实验台、场景库、评测、压测、鲁棒性和“抽取”模式都能用，不需要再部署纯决策服务。
 
 ## 类型怎么写
 
