@@ -14,6 +14,7 @@ from pathlib import Path
 
 import torch
 
+from .data.batching import shape_batches
 from .data.slots import STATE_KEY
 from .modeling import DecisionModel
 from .processing import DecisionProcessor, Example
@@ -53,6 +54,23 @@ class DecisionPipeline:
         logits, _ = self.model.score_decisions(items, self.processor, self.letters)
         return [candidate_probabilities(row[:len(item["target"])].tolist(), self.temperature)
                 for item, row in zip(items, logits)]
+
+    @torch.inference_mode()
+    def candidate_logits(self, items, batch_size=128, token_budget=32768):
+        """Raw (uncalibrated) candidate logits for encoded decisions, one list per item, in input order.
+
+        Items are scored in length-sorted batches of few distinct shapes, the loop of
+        scripts/evaluate_cj_bench.py, so a server and the benchmark read the same numbers.
+        """
+        rows = sorted((dict(item, index=i) for i, item in enumerate(items)), key=lambda row: len(row["input_ids"]))
+        logits = [None] * len(items)
+        for batch in shape_batches(rows, batch_size, token_budget):
+            values, _ = self.model.score_decisions(batch, self.processor, self.letters)
+            if not torch.isfinite(values).all().item():
+                raise FloatingPointError("non-finite decision logits")
+            for row, line in zip(batch, values.float().cpu().tolist()):
+                logits[row["index"]] = line[:len(row["options"])]
+        return logits
 
     def decide(self, state, questions):
         """`{name: {candidate key: probability}}` for CJ-format questions about one state."""
