@@ -128,7 +128,21 @@ ModelScope：
 modelscope download --model quincyqiang/chinese-decision-unified-2b --local_dir chinese-decision-unified-2b
 ```
 
-### 决策和抽取
+### 调用方式
+
+模型可以本地加载（`DecisionPipeline`），也可以起一个 HTTP 服务调用。两种方式的请求格式相同，**请求里带什么字段，就做什么任务**：
+
+| 请求带 | 任务 | 返回 |
+|---|---|---|
+| `state` + `questions`（或单个 `question`） | 决策 | `answers`：每个问题的候选概率 |
+| `text` + `types` | 抽取 | `entities`：带位置和概率的实体 |
+| 两组都带 | 对同一段输入既决策又抽取 | `answers` + `entities` |
+
+两组都带时 `text` 可以省略，默认取 `state`。输入较短时（一个问题时大约 1,000 字以内，问题越多这个长度越短），两种读出在**同一次前向**里完成：A800 上一个这样的请求约 50 ms，分开发两次约 95 ms。输入更长时自动拆成两次前向，结果不变。
+
+### 本地加载
+
+**分开调用**：决策和抽取各发一个请求。
 
 ```python
 from decision import DecisionPipeline
@@ -174,24 +188,145 @@ pipe({
     {'text': '90号',  'label': '门牌号', 'start': 17, 'end': 20, 'score': 0.6332}]}
 ```
 
-`start` / `end` 是字符下标（左闭右开）。同时带 `questions` 和 `types` 的请求对同一段输入各答一次，返回 `{'task': 'decision+extraction', 'answers': ..., 'entities': ...}`，`text` 缺省取 `state`；两者都没有会报错。
+**一次请求同时决策和抽取**：`questions` 和 `types` 放进同一个请求。
+
+```python
+result = pipe({
+    "state": "客户留言：我叫张伟，上周在杭州的苏宁易购门店买了空调，付款后一直没有收到发票，已经催了三次，今天必须拿到。",
+    "questions": {
+        "urgent": {"type": "noul", "instructions": "客户是否表达了紧迫性？"},
+        "department": {"type": "choice", "instructions": "应该由哪个部门处理？",
+                       "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"}},
+    },
+    # 省略 text：从 state 里抽取
+    "types": {"人名": "人物的姓名", "地名": "地名或地理政治实体，如省、市、区县", "公司": "企业名称"},
+    "threshold": 0.3,
+})
+
+department = result["answers"]["department"]
+print(max(department, key=department.get))                     # billing
+print([(e["label"], e["text"]) for e in result["entities"]])   # [('人名', '张伟'), ('地名', '杭州'), ('公司', '苏宁易购')]
+```
+
+输出（A800 上运行，概率保留 4 位）：
+
+```text
+{'task': 'decision+extraction',
+ 'answers': {
+    'urgent':     {'false': 0.215, 'true': 0.785},
+    'department': {'billing': 0.9668, 'technical': 0.0032, 'sales': 0.03}},
+ 'entities': [
+    {'text': '张伟',     'label': '人名', 'start': 7,  'end': 9,  'score': 0.9314},
+    {'text': '杭州',     'label': '地名', 'start': 13, 'end': 15, 'score': 0.8552},
+    {'text': '苏宁易购', 'label': '公司', 'start': 16, 'end': 20, 'score': 0.9384}]}
+```
+
+`answers` 是每个候选项的概率，已按 `decision_config.json` 的温度校准；本地调用不附带 `choice` 字段，取概率最大的候选即可。`start` / `end` 是字符下标（左闭右开）。`threshold` 可选，只保留概率不低于它的实体。两组字段都没有会报 `ValueError`。
+
+也可以不拼请求，直接调方法：
+
+```python
+pipe.decide(state, questions)                                          # {问题名: {候选: 概率}}
+pipe.extract(text, types, threshold=0.3)                               # [实体, ...]
+pipe.decide_and_extract(state, questions, text, types, threshold=0.3)  # (决策概率, 实体)
+```
 
 只做决策时，`AutoModelForCausalLM.from_pretrained(path)` 也能加载本模型，`span_head.*` 会被报告为未使用的权重，不影响结果。抽取读出不在 GGUF / llama.cpp 里，只能走 PyTorch。
 
 ### HTTP 服务
 
-项目仓库的 `scripts/serve_unified.py` 把同一份权重暴露成两个接口，请求形状决定任务：
+项目仓库的 `scripts/serve_unified.py` 把同一份权重做成一个服务（`--name` 是响应里的模型名）：
 
 ```bash
-python scripts/serve_unified.py --model chinese-decision-unified-2b --port 8011
+python scripts/serve_unified.py --model chinese-decision-unified-2b --name chinese-decision-unified-2b --port 8011
 ```
 
 | 接口 | 说明 |
 |---|---|
-| `POST /v1/decide` | 决策，请求格式与 hmm / System One 相同 |
-| `POST /v1/extract` | 抽取：`{"text", "types": {名称: 说明}, "threshold"?}`，返回带位置和概率的实体 |
-| `POST /v1/predict` | 两种请求都收；同时带 `questions` 和 `types` 时一次返回 `answers` 和 `entities`（`text` 缺省取 `state`；输入较短时两种读出共用一次前向） |
+| `POST /v1/predict` | 推荐。按请求字段选择任务；两组都带时一次返回 `answers` 和 `entities` |
+| `POST /v1/decide` | 只决策，只读 `state` 和 `questions`；请求格式与 hmm / System One 相同 |
+| `POST /v1/extract` | 只抽取：`{"text", "types": {名称: 说明}, "threshold"?}` |
 | `GET /v1/info` | 模型名、温度、`can_extract`、GPU、运行统计 |
+
+`/v1/decide` 和 `/v1/extract` 会忽略不属于自己的字段，要同时做两件事，请发到 `/v1/predict`。
+
+**一次请求同时决策和抽取**：
+
+```bash
+curl http://127.0.0.1:8011/v1/predict -H 'Content-Type: application/json' -d '{
+  "state": "客户留言：我叫张伟，上周在杭州的苏宁易购门店买了空调，付款后一直没有收到发票，已经催了三次，今天必须拿到。",
+  "questions": {
+    "urgent": {"type": "noul", "instructions": "客户是否表达了紧迫性？"},
+    "department": {"type": "choice", "instructions": "应该由哪个部门处理？",
+                   "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"}}
+  },
+  "types": {"人名": "人物的姓名", "地名": "地名或地理政治实体，如省、市、区县", "公司": "企业名称"},
+  "threshold": 0.3
+}'
+```
+
+返回（A800 上运行，概率保留 4 位）：
+
+```json
+{
+  "task": "decision+extraction",
+  "model": "chinese-decision-unified-2b",
+  "answers": {
+    "urgent": {"type": "noul", "probabilities": {"false": 0.215, "true": 0.785}, "confidence": 0.57, "noul": 0.785},
+    "department": {"type": "choice", "probabilities": {"billing": 0.9668, "technical": 0.0032, "sales": 0.03},
+                   "confidence": 0.9502, "choice": "billing"}
+  },
+  "text": "客户留言：我叫张伟，上周在杭州的苏宁易购门店买了空调，付款后一直没有收到发票，已经催了三次，今天必须拿到。",
+  "entities": [
+    {"text": "张伟", "label": "人名", "start": 7, "end": 9, "score": 0.9314},
+    {"text": "杭州", "label": "地名", "start": 13, "end": 15, "score": 0.8552},
+    {"text": "苏宁易购", "label": "公司", "start": 16, "end": 20, "score": 0.9384}
+  ],
+  "latency_ms": 54.9
+}
+```
+
+HTTP 的决策答案比本地调用多几个字段：`choice` 是概率最大的候选（`choice` 题）；`noul` 是“是”的概率（`noul` 题）；`score` 是按概率加权的分数，附带 `legend`（`score` 题）。`confidence` = (k × 最大概率 − 1) / (k − 1)，k 是候选数：均匀分布为 0，完全确定为 1。它衡量的是分布有多集中，不是准确率。
+
+同样的请求用 Python：
+
+```python
+import requests
+
+body = {
+    "state": "客户留言：我叫张伟，上周在杭州的苏宁易购门店买了空调，付款后一直没有收到发票，已经催了三次，今天必须拿到。",
+    "questions": {
+        "urgent": {"type": "noul", "instructions": "客户是否表达了紧迫性？"},
+        "department": {"type": "choice", "instructions": "应该由哪个部门处理？",
+                       "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"}},
+    },
+    "types": {"人名": "人物的姓名", "地名": "地名或地理政治实体，如省、市、区县", "公司": "企业名称"},
+    "threshold": 0.3,
+}
+out = requests.post("http://127.0.0.1:8011/v1/predict", json=body, timeout=30).json()
+
+print(out["answers"]["department"]["choice"])                 # billing
+print(out["answers"]["urgent"]["noul"])                       # 0.785
+print([(e["label"], e["text"]) for e in out["entities"]])     # [('人名', '张伟'), ('地名', '杭州'), ('公司', '苏宁易购')]
+```
+
+**只决策或只抽取**：去掉另一组字段即可，发到 `/v1/predict` 或对应的专用接口都行。
+
+```bash
+# 只决策
+curl http://127.0.0.1:8011/v1/decide -H 'Content-Type: application/json' -d '{
+  "state": "客户留言：付款后一直没有收到发票，我已经催了三次，今天必须拿到。",
+  "questions": {"department": {"type": "choice", "instructions": "应该由哪个部门处理？",
+                               "criteria": {"billing": "支付、发票及退款", "technical": "故障和系统问题", "sales": "购买咨询与升级"}}}
+}'
+
+# 只抽取
+curl http://127.0.0.1:8011/v1/extract -H 'Content-Type: application/json' -d '{
+  "text": "华为公司董事长梁华在深圳会见了腾讯游戏负责人。",
+  "types": {"人名": "人物的姓名", "公司": "企业名称"},
+  "threshold": 0.3
+}'
+```
 
 这个服务同时兼容 `scripts/serve_gpu.py` 的决策接口：`POST /v1/systemone`（`?debug=1` 附带 logits）、`/api/alpha/decisions`、`/v1/batch`、`/v1/compile`、`/v1/tournament`，以及 `/health`、`/v1/info`（没有训练进度和热更新）。所以**只部署它一个**就够了：测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) 把 `DECISION_BASE_URL` 指向它，实验台、场景库、评测、压测、鲁棒性和“抽取”模式都能用，不需要再部署纯决策服务。
 

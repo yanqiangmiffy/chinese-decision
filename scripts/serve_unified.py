@@ -247,7 +247,8 @@ def create_app(pipe, model_name="decision", meta=None):
                 "answers": answers_for(questions, pipe.decide(body["state"], questions))}
 
     def extract(body):
-        entities = pipe.extract(body["text"], extraction_types(body), float(body.get("threshold", 0.0)))
+        types = extraction_types(body)
+        entities = pipe.extract(body["text"], types, float(body.get("threshold", 0.0)))
         return {"task": "extraction", "model": model_name, "text": body["text"], "entities": entities}
 
     # both readouts of one input in one forward pass: `text` defaults to `state` and `state` to `text`

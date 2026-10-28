@@ -137,8 +137,9 @@ class ServeUnifiedTests(unittest.TestCase):
         self.assertEqual(http.post("/v1/predict", json={"types": ["人名"], "question": QUESTION}).status_code, 400)
         self.assertEqual(http.post("/v1/decide", json={"state": "s"}).status_code, 400)
         self.assertEqual(http.post("/v1/extract", json={"text": "x", "types": []}).status_code, 400)
+        self.assertIn("needs `text`", http.post("/v1/extract", json={"types": ["人名"]}).json()["detail"])
         self.assertEqual(client(can_extract=False)[0].post("/v1/extract", json={"text": "x", "types": ["a"]}).status_code, 400)
-        self.assertEqual(http.get("/v1/info").json()["requests"]["errors"], 3)
+        self.assertEqual(http.get("/v1/info").json()["requests"]["errors"], 4)
         self.assertEqual(http.get("/health").json()["status"], "ok")
 
 
