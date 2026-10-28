@@ -27,6 +27,7 @@ from torch import nn
 
 from .configuration import DecisionConfig, ExtractionConfig
 from .data.batching import greedy_batches
+from .processing import PAD_MULTIPLE
 from .utils import resolve_pretrained
 
 SPAN_PREFIX = "span_head."
@@ -230,6 +231,31 @@ class DecisionModel(nn.Module):
         if self.span_head is None:
             raise ValueError("this model has no span head; it answers decisions only")
         return self.span_head(self.hidden_states(batch.input_ids, batch.attention_mask), batch)
+
+    @torch.no_grad()
+    def joint_readouts(self, decisions, rows, processor, letter_ids=None):
+        """Decision logits `[D, len(letter_ids)]` and span utilities `[N, 1 + M]` from one forward pass.
+
+        Encoded decisions and span rows are left-padded to one width and run through the backbone together;
+        the LM head reads each decision's last position and the span head the span rows' hidden states.
+        """
+        if self.span_head is None:
+            raise ValueError("this model has no span head; it answers decisions only")
+        letters = letter_ids if letter_ids is not None else self.letter_tensor(processor)
+        longest = max(len(item["input_ids"]) for item in [*decisions, *rows])
+        width = -(-longest // PAD_MULTIPLE) * PAD_MULTIPLE if len(decisions) + len(rows) > 1 else longest
+        batch = processor.collate_extraction(rows, width=width).to(self.device)
+        ids = torch.full((len(decisions), width), processor.pad_token_id, dtype=torch.long)
+        mask = torch.zeros_like(ids)
+        for b, item in enumerate(decisions):
+            ids[b, width - len(item["input_ids"]):] = torch.tensor(item["input_ids"])
+            mask[b, width - len(item["input_ids"]):] = 1
+        input_ids = torch.cat([batch.input_ids, ids.to(self.device)])
+        attention_mask = torch.cat([batch.attention_mask, mask.to(self.device)])
+        with torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=self.device.type == "cuda"):
+            hidden = self.hidden_states(input_ids, attention_mask)
+            logits = self.base_model.get_output_embeddings()(hidden[len(rows):, -1])[:, letters].float()
+        return logits, self.span_head(hidden[:len(rows)], batch)
 
     @torch.no_grad()
     def predict_spans(self, items, processor, threshold=0.0, none_shift=None, token_budget=12288, batch_size=16):

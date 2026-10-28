@@ -90,6 +90,21 @@ class HeadTests(unittest.TestCase):
         self.assertEqual(batch.targets.shape, (len(long["cands"]) + len(short["cands"]), 3))
         torch.testing.assert_close(batch.targets.sum(-1), torch.ones(batch.targets.shape[0]))
 
+    def test_one_pass_reads_both_heads_as_separate_passes_do(self):
+        item = self.processor.encode_extraction(row("李四昨天从上海飞到了北京市", [(10, 13, "loc")]))
+        tokenizer, letters = CharTokenizer(), torch.tensor([3, 4, 5])
+        # one decision shorter and one longer than the span row, so rows of both kinds get left padding
+        decisions = [{"input_ids": tokenizer.encode(prompt)}
+                     for prompt in ("李四去了哪里？", "李四昨天从上海飞到了北京市。" * 8 + "他去了哪里？")]
+        self.assertGreater(len(decisions[1]["input_ids"]), len(item["input_ids"]))
+        with torch.inference_mode():
+            logits, utilities = self.model.joint_readouts(decisions, [item], self.processor, letters)
+            for line, decision in zip(logits, decisions, strict=True):
+                ids = torch.tensor([decision["input_ids"]])
+                torch.testing.assert_close(line, self.model.decision_logits(ids, torch.ones_like(ids), letters)[0],
+                                           atol=1e-4, rtol=1e-4)
+        torch.testing.assert_close(utilities, self.utilities([item])[0], atol=1e-4, rtol=1e-4)
+
     def test_span_loss_trains_the_head_and_weights_none_spans(self):
         item = self.processor.encode_extraction(row("张三去北京", [(0, 2, "name"), (3, 5, "loc")]))
         batch = self.processor.collate_extraction([item])

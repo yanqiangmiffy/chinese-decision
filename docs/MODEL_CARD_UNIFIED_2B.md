@@ -190,7 +190,7 @@ python scripts/serve_unified.py --model chinese-decision-unified-2b --port 8011
 |---|---|
 | `POST /v1/decide` | 决策，请求格式与 hmm / System One 相同 |
 | `POST /v1/extract` | 抽取：`{"text", "types": {名称: 说明}, "threshold"?}`，返回带位置和概率的实体 |
-| `POST /v1/predict` | 两种请求都收；同时带 `questions` 和 `types` 时一次返回 `answers` 和 `entities`（`text` 缺省取 `state`） |
+| `POST /v1/predict` | 两种请求都收；同时带 `questions` 和 `types` 时一次返回 `answers` 和 `entities`（`text` 缺省取 `state`；输入较短时两种读出共用一次前向） |
 | `GET /v1/info` | 模型名、温度、`can_extract`、GPU、运行统计 |
 
 这个服务同时兼容 `scripts/serve_gpu.py` 的决策接口：`POST /v1/systemone`（`?debug=1` 附带 logits）、`/api/alpha/decisions`、`/v1/batch`、`/v1/compile`、`/v1/tournament`，以及 `/health`、`/v1/info`（没有训练进度和热更新）。所以**只部署它一个**就够了：测试平台 [Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) 把 `DECISION_BASE_URL` 指向它，实验台、场景库、评测、压测、鲁棒性和“抽取”模式都能用，不需要再部署纯决策服务。

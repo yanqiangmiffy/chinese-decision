@@ -16,7 +16,7 @@ service is not needed:
     POST /v1/decide   {"state": ..., "questions": {"q": {"type", "instructions", "criteria"}}}  (or "question")
     POST /v1/extract  {"text": "...", "types": ["人名", ...] | {"人名": "人物的姓名", ...}, "threshold": 0.0}
     POST /v1/predict  either shape; `questions`/`question` -> decision, `types` -> extraction, both -> both
-                      (one input: `text` defaults to `state` and `state` to `text`)
+                      (one input and one forward pass: `text` defaults to `state` and `state` to `text`)
 
 Decision answers use the hmm / System One format (`probabilities`, `confidence`, `choice` / `noul` / `score`),
 calibrated with the model's own temperature. One forward pass runs at a time (a lock around the GPU); requests
@@ -218,18 +218,13 @@ def create_app(pipe, model_name="decision", meta=None):
             for name, question, item in encoded}}
 
     # the first version of this server: /v1/decide takes the same request, answers with the same format
-    def decide(body):
+    def decision_questions(body):
         questions = body.get("questions") or ({"q": body["question"]} if "question" in body else None)
         if body.get("state") is None or not questions:
             raise ValueError("a decision request needs `state` and `questions` (or `question`)")
-        answers = {}
-        for name, probabilities in pipe.decide(body["state"], questions).items():
-            question = questions[name]
-            options = options_for(question)
-            answers[name] = build_answer(question["type"], options, [probabilities[key] for key, _ in options])
-        return {"task": "decision", "model": model_name, "answers": answers}
+        return questions
 
-    def extract(body):
+    def extraction_types(body):
         if not isinstance(body.get("text"), str) or "types" not in body:
             raise ValueError("an extraction request needs `text` (a string) and `types`")
         if not pipe.can_extract:
@@ -237,16 +232,33 @@ def create_app(pipe, model_name="decision", meta=None):
         types = body["types"]
         if not types or not isinstance(types, (list, dict)):
             raise ValueError("`types` must be a non-empty list of names or {name: description}")
-        entities = pipe.extract(body["text"], types, float(body.get("threshold", 0.0)))
+        return types
+
+    def answers_for(questions, probabilities):
+        answers = {}
+        for name, question in questions.items():
+            options = options_for(question)
+            answers[name] = build_answer(question["type"], options, [probabilities[name][key] for key, _ in options])
+        return answers
+
+    def decide(body):
+        questions = decision_questions(body)
+        return {"task": "decision", "model": model_name,
+                "answers": answers_for(questions, pipe.decide(body["state"], questions))}
+
+    def extract(body):
+        entities = pipe.extract(body["text"], extraction_types(body), float(body.get("threshold", 0.0)))
         return {"task": "extraction", "model": model_name, "text": body["text"], "entities": entities}
 
-    # both readouts of one input: `text` defaults to `state` and `state` to `text`
+    # both readouts of one input in one forward pass: `text` defaults to `state` and `state` to `text`
     def decide_and_extract(body):
         text = body.get("text", body.get("state"))
         body = {"state": text, "text": text} | body
-        decision, extraction = decide(body), extract(body)
-        return {"task": "decision+extraction", "model": model_name, "answers": decision["answers"],
-                "text": extraction["text"], "entities": extraction["entities"]}
+        questions, types = decision_questions(body), extraction_types(body)
+        probabilities, entities = pipe.decide_and_extract(body["state"], questions, body["text"], types,
+                                                          float(body.get("threshold", 0.0)), token_budget=TOKEN_BUDGET)
+        return {"task": "decision+extraction", "model": model_name, "answers": answers_for(questions, probabilities),
+                "text": body["text"], "entities": entities}
 
     # ------------------------------------------------------------------ status
     @app.get("/health")

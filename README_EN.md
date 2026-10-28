@@ -225,7 +225,7 @@ Decisions work as in [Python](#python-08b-example). One process of the HTTP serv
 | `POST /v1/batch`, `POST /v1/compile`, `POST /v1/tournament` | Batched requests, prompt compilation only, grouped rounds for questions with more candidates than one prompt holds |
 | `POST /v1/decide` | Decisions, same request format as `/v1/systemone` |
 | `POST /v1/extract` | Extraction: `{"text", "types", "threshold"?}` |
-| `POST /v1/predict` | Accepts both request shapes and picks by shape; with both `questions` and `types` it returns `answers` and `entities` in one response (`text` defaults to `state`) |
+| `POST /v1/predict` | Accepts both request shapes and picks by shape; with both `questions` and `types` it returns `answers` and `entities` in one response (`text` defaults to `state`; short inputs share one forward pass) |
 | `GET /v1/info`, `GET /health`, `GET /v1/training` | Model name, temperature, whether extraction is available, GPU, run statistics; health check; training progress |
 
 ### Writing Types

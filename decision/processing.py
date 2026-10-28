@@ -351,11 +351,14 @@ class DecisionProcessor:
                 "gold_entities": {(e["start"], e["end"], e["label"]) for e in row.get("entities", [])},
                 "unrepresented": unrepresented}
 
-    def collate_extraction(self, items, multiple=PAD_MULTIPLE):
-        """Left-pad like `pad_decisions`: a lone row stays unpadded for the linear-attention layers."""
+    def collate_extraction(self, items, multiple=PAD_MULTIPLE, width=None):
+        """Left-pad like `pad_decisions`: a lone row stays unpadded for the linear-attention layers.
+
+        `width` pads to that length instead, for a batch that also holds other rows (`DecisionModel.joint_readouts`).
+        """
         import torch
         longest = max(len(item["input_ids"]) for item in items)
-        width = -(-longest // multiple) * multiple if len(items) > 1 else longest
+        width = width or (-(-longest // multiple) * multiple if len(items) > 1 else longest)
         max_types = max(len(item["types"]) for item in items)
         input_ids = torch.full((len(items), width), self.pad_token_id, dtype=torch.long)
         attention = torch.zeros((len(items), width), dtype=torch.long)

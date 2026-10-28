@@ -19,6 +19,7 @@ def client(can_extract=True):
     pipe.model = SimpleNamespace(config=SimpleNamespace(temperature=1.1, max_length=16384))
     pipe.decide.return_value = {"q": {"A": 0.8, "B": 0.2}}
     pipe.extract.return_value = [{"text": "张三", "label": "人名", "start": 0, "end": 2, "score": 0.9}]
+    pipe.decide_and_extract.return_value = (pipe.decide.return_value, pipe.extract.return_value)
     return TestClient(create_app(pipe, "test")), pipe
 
 
@@ -125,8 +126,10 @@ class ServeUnifiedTests(unittest.TestCase):
                                               "types": {"人名": "人物的姓名"}, "threshold": 0.3}).json()
         self.assertEqual((body["task"], body["answers"]["q"]["choice"], body["text"], body["entities"][0]["text"]),
                          ("decision+extraction", "A", "张三来了", "张三"))
-        pipe.decide.assert_called_once_with("张三来了", {"q": QUESTION})
-        pipe.extract.assert_called_once_with("张三来了", {"人名": "人物的姓名"}, 0.3)
+        pipe.decide_and_extract.assert_called_once_with("张三来了", {"q": QUESTION}, "张三来了", {"人名": "人物的姓名"},
+                                                        0.3, token_budget=32768)
+        pipe.decide.assert_not_called()
+        pipe.extract.assert_not_called()
         self.assertEqual(http.get("/v1/info").json()["requests"]["both"], 1)
 
     def test_bad_requests_are_400_and_counted(self):

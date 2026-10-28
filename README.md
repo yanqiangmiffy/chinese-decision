@@ -225,7 +225,7 @@ pipe({"text": "收货地址：浙江省杭州市西湖区文三路90号东部软
 | `POST /v1/batch`、`POST /v1/compile`、`POST /v1/tournament` | 批量请求、只编译提示词、候选多于一题时的分组淘汰 |
 | `POST /v1/decide` | 决策，请求格式与 `/v1/systemone` 相同 |
 | `POST /v1/extract` | 抽取：`{"text", "types", "threshold"?}` |
-| `POST /v1/predict` | 两种请求都收，按请求形状自动选择；同时带 `questions` 和 `types` 时一次返回 `answers` 和 `entities`（`text` 缺省取 `state`） |
+| `POST /v1/predict` | 两种请求都收，按请求形状自动选择；同时带 `questions` 和 `types` 时一次返回 `answers` 和 `entities`（`text` 缺省取 `state`；输入较短时两种读出共用一次前向） |
 | `GET /v1/info`、`GET /health`、`GET /v1/training` | 模型名、温度、是否支持抽取、GPU、运行统计；健康检查；训练进度 |
 
 ### 类型怎么写
