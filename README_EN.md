@@ -102,7 +102,7 @@ Like the decision-only models, the unified model comes in sizes: same recipe, sa
 | | Decision-only models | Unified models |
 |---|---|---|
 | Readouts | Decisions: `noul` / `choice` / `score` | Decisions + typed extraction |
-| What picks the task | Every request is a decision | `questions` runs a decision, `types` runs extraction (both or neither is an error) |
+| What picks the task | Every request is a decision | `questions` runs a decision, `types` runs extraction, both run both on the same input (neither is an error) |
 | Starting point | Raw Qwen3.5 + LoRA | Raw Qwen3.5 + LoRA + a randomly initialized span head, trained together |
 | Training data | [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset), 13,048,000 decisions | CJ-Dataset decisions + [CJ-IE](#extraction-data-cj-ie) (611,354 decisions + 573,294 extraction span rows) |
 | Sizes | 0.8B / 2B / 4B | 0.8B / 2B / 4B (planned) |
@@ -225,7 +225,7 @@ Decisions work as in [Python](#python-08b-example). One process of the HTTP serv
 | `POST /v1/batch`, `POST /v1/compile`, `POST /v1/tournament` | Batched requests, prompt compilation only, grouped rounds for questions with more candidates than one prompt holds |
 | `POST /v1/decide` | Decisions, same request format as `/v1/systemone` |
 | `POST /v1/extract` | Extraction: `{"text", "types", "threshold"?}` |
-| `POST /v1/predict` | Accepts both request shapes and picks by shape |
+| `POST /v1/predict` | Accepts both request shapes and picks by shape; with both `questions` and `types` it returns `answers` and `entities` in one response (`text` defaults to `state`) |
 | `GET /v1/info`, `GET /health`, `GET /v1/training` | Model name, temperature, whether extraction is available, GPU, run statistics; health check; training progress |
 
 ### Writing Types
@@ -607,7 +607,7 @@ pipe({"text": "华为公司董事长梁华在深圳会见了腾讯游戏负责�
 # {"task": "extraction", "entities": [{"text": "华为公司", "label": "公司", "start": 0, "end": 4, "score": ...}, ...]}
 ```
 
-The request picks the task: `questions` means a decision, `types` means extraction. The lower-level API follows transformers:
+The request picks the task: `questions` means a decision, `types` means extraction, and both mean both on the same input (`text` defaults to `state`). The lower-level API follows transformers:
 
 | Class | Role |
 |---|---|

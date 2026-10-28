@@ -15,7 +15,8 @@ service is not needed:
     POST /v1/tournament       a choice question with more candidates than one prompt holds
     POST /v1/decide   {"state": ..., "questions": {"q": {"type", "instructions", "criteria"}}}  (or "question")
     POST /v1/extract  {"text": "...", "types": ["人名", ...] | {"人名": "人物的姓名", ...}, "threshold": 0.0}
-    POST /v1/predict  either shape; `questions`/`question` -> decision, `types` -> extraction
+    POST /v1/predict  either shape; `questions`/`question` -> decision, `types` -> extraction, both -> both
+                      (one input: `text` defaults to `state` and `state` to `text`)
 
 Decision answers use the hmm / System One format (`probabilities`, `confidence`, `choice` / `noul` / `score`),
 calibrated with the model's own temperature. One forward pass runs at a time (a lock around the GPU); requests
@@ -56,7 +57,7 @@ class Stats:
 
     def __init__(self):
         self.started = time.time()
-        self.kinds = {"decide": 0, "extract": 0, "errors": 0}
+        self.kinds = {"decide": 0, "extract": 0, "both": 0, "errors": 0}
         self.requests = self.decisions = self.input_tokens = 0
         self.latencies = deque(maxlen=4096)
 
@@ -219,7 +220,7 @@ def create_app(pipe, model_name="decision", meta=None):
     # the first version of this server: /v1/decide takes the same request, answers with the same format
     def decide(body):
         questions = body.get("questions") or ({"q": body["question"]} if "question" in body else None)
-        if "state" not in body or not questions:
+        if body.get("state") is None or not questions:
             raise ValueError("a decision request needs `state` and `questions` (or `question`)")
         answers = {}
         for name, probabilities in pipe.decide(body["state"], questions).items():
@@ -229,8 +230,8 @@ def create_app(pipe, model_name="decision", meta=None):
         return {"task": "decision", "model": model_name, "answers": answers}
 
     def extract(body):
-        if "text" not in body or "types" not in body:
-            raise ValueError("an extraction request needs `text` and `types`")
+        if not isinstance(body.get("text"), str) or "types" not in body:
+            raise ValueError("an extraction request needs `text` (a string) and `types`")
         if not pipe.can_extract:
             raise ValueError("this model has no span head")
         types = body["types"]
@@ -238,6 +239,14 @@ def create_app(pipe, model_name="decision", meta=None):
             raise ValueError("`types` must be a non-empty list of names or {name: description}")
         entities = pipe.extract(body["text"], types, float(body.get("threshold", 0.0)))
         return {"task": "extraction", "model": model_name, "text": body["text"], "entities": entities}
+
+    # both readouts of one input: `text` defaults to `state` and `state` to `text`
+    def decide_and_extract(body):
+        text = body.get("text", body.get("state"))
+        body = {"state": text, "text": text} | body
+        decision, extraction = decide(body), extract(body)
+        return {"task": "decision+extraction", "model": model_name, "answers": decision["answers"],
+                "text": extraction["text"], "entities": extraction["entities"]}
 
     # ------------------------------------------------------------------ status
     @app.get("/health")
@@ -296,7 +305,7 @@ def create_app(pipe, model_name="decision", meta=None):
     @app.post("/v1/predict")
     def post_predict(body: dict = Body(...)):
         if "types" in body and ("questions" in body or "question" in body):
-            raise HTTPException(status_code=400, detail="send either questions (decision) or types (extraction), not both")
+            return run("both", lambda: decide_and_extract(body))
         if "types" in body:
             return run("extract", lambda: extract(body))
         return run("decide", lambda: decide(body))

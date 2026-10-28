@@ -102,7 +102,7 @@
 | | 纯决策模型 | 统一模型 |
 |---|---|---|
 | 读出 | 决策：`noul` / `choice` / `score` | 决策 + 类型化抽取 |
-| 由什么决定任务 | 请求都是决策 | 请求带 `questions` 走决策，带 `types` 走抽取（两者都带或都没有会报错） |
+| 由什么决定任务 | 请求都是决策 | 请求带 `questions` 走决策，带 `types` 走抽取，两者都带则对同一段输入各答一次（都没有会报错） |
 | 训练起点 | 原始 Qwen3.5 + LoRA | 原始 Qwen3.5 + LoRA + 随机初始化的跨度头（一起训练） |
 | 训练数据 | [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) 13,048,000 条决策 | CJ-Dataset 决策 + [CJ-IE](#抽取数据-cj-ie)（决策 611,354 条 + 抽取跨度行 573,294 条） |
 | 尺寸 | 0.8B / 2B / 4B | 0.8B / 2B / 4B（计划中） |
@@ -225,7 +225,7 @@ pipe({"text": "收货地址：浙江省杭州市西湖区文三路90号东部软
 | `POST /v1/batch`、`POST /v1/compile`、`POST /v1/tournament` | 批量请求、只编译提示词、候选多于一题时的分组淘汰 |
 | `POST /v1/decide` | 决策，请求格式与 `/v1/systemone` 相同 |
 | `POST /v1/extract` | 抽取：`{"text", "types", "threshold"?}` |
-| `POST /v1/predict` | 两种请求都收，按请求形状自动选择 |
+| `POST /v1/predict` | 两种请求都收，按请求形状自动选择；同时带 `questions` 和 `types` 时一次返回 `answers` 和 `entities`（`text` 缺省取 `state`） |
 | `GET /v1/info`、`GET /health`、`GET /v1/training` | 模型名、温度、是否支持抽取、GPU、运行统计；健康检查；训练进度 |
 
 ### 类型怎么写
@@ -607,7 +607,7 @@ pipe({"text": "华为公司董事长梁华在深圳会见了腾讯游戏负责�
 # {"task": "extraction", "entities": [{"text": "华为公司", "label": "公司", "start": 0, "end": 4, "score": ...}, ...]}
 ```
 
-任务由请求决定：带 `questions` 走分类，带 `types` 走抽取。更底层的接口与 transformers 的用法相同：
+任务由请求决定：带 `questions` 走分类，带 `types` 走抽取，两者都带时对同一段输入各做一次（`text` 缺省取 `state`）。更底层的接口与 transformers 的用法相同：
 
 | 类 | 作用 |
 |---|---|

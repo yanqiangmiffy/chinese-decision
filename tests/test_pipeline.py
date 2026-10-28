@@ -97,7 +97,14 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(self.pipe({"text": "t", "types": ["人名"]})["task"], "extraction")
         self.pipe.extract.assert_called_once_with("t", ["人名"], 0.0)
 
-    def test_ambiguous_or_empty_requests_are_rejected(self):
+    def test_a_request_with_questions_and_types_gets_both_about_one_input(self):
+        question = {"type": "noul", "instructions": "?"}
+        result = self.pipe({"state": "s", "question": question, "types": ["人名"]})
+        self.assertEqual((result["task"], result["answers"], result["entities"]), ("decision+extraction", {"q": {"A": 1.0}}, []))
+        self.pipe.decide.assert_called_once_with("s", {"q": question})
+        self.pipe.extract.assert_called_once_with("s", ["人名"], 0.0)
+
+    def test_empty_requests_are_rejected(self):
         with self.assertRaises(ValueError):
             self.pipe({"text": "t", "types": ["人名"], "questions": {}})
         with self.assertRaises(ValueError):

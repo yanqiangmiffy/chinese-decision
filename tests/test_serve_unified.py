@@ -119,13 +119,23 @@ class ServeUnifiedTests(unittest.TestCase):
         pipe.extract.assert_called_once_with("张三来了", {"人名": "人物的姓名"}, 0.3)
         self.assertEqual(http.post("/v1/predict", json={"state": "s", "questions": {"q": QUESTION}}).json()["task"], "decision")
 
+    def test_predict_with_questions_and_types_answers_both_about_one_input(self):
+        http, pipe = client()
+        body = http.post("/v1/predict", json={"state": "张三来了", "questions": {"q": QUESTION},
+                                              "types": {"人名": "人物的姓名"}, "threshold": 0.3}).json()
+        self.assertEqual((body["task"], body["answers"]["q"]["choice"], body["text"], body["entities"][0]["text"]),
+                         ("decision+extraction", "A", "张三来了", "张三"))
+        pipe.decide.assert_called_once_with("张三来了", {"q": QUESTION})
+        pipe.extract.assert_called_once_with("张三来了", {"人名": "人物的姓名"}, 0.3)
+        self.assertEqual(http.get("/v1/info").json()["requests"]["both"], 1)
+
     def test_bad_requests_are_400_and_counted(self):
         http, _ = client()
-        self.assertEqual(http.post("/v1/predict", json={"text": "x", "types": ["人名"], "question": QUESTION}).status_code, 400)
+        self.assertEqual(http.post("/v1/predict", json={"types": ["人名"], "question": QUESTION}).status_code, 400)
         self.assertEqual(http.post("/v1/decide", json={"state": "s"}).status_code, 400)
         self.assertEqual(http.post("/v1/extract", json={"text": "x", "types": []}).status_code, 400)
         self.assertEqual(client(can_extract=False)[0].post("/v1/extract", json={"text": "x", "types": ["a"]}).status_code, 400)
-        self.assertEqual(http.get("/v1/info").json()["requests"]["errors"], 2)
+        self.assertEqual(http.get("/v1/info").json()["requests"]["errors"], 3)
         self.assertEqual(http.get("/health").json()["status"], "ok")
 
 

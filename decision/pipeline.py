@@ -1,7 +1,8 @@
 """High-level inference: load a model directory once, answer decision and extraction requests.
 
 Which readout answers a request is fixed by the request, not guessed from outputs: a decision
-request carries questions with candidates, an extraction request carries entity types. Any input
+request carries questions with candidates, an extraction request carries entity types, and a
+request that carries both gets both answers about the same input. Any input
 could be pushed through both readouts, but the other readout's numbers mean nothing for it and
 cannot be compared. Cascades read one answer to choose the next request, as
 `SlotFillingPipeline` does: the intent decides which slot types to extract.
@@ -97,16 +98,23 @@ class DecisionPipeline:
                 for s, e, label, p in sorted(found)]
 
     def __call__(self, request):
-        """Route by request shape: `questions` (or one `question`) -> decide, `types` -> extract."""
-        if "types" in request and ("questions" in request or "question" in request):
-            raise ValueError("a request asks for either decisions (questions) or extraction (types), not both")
-        if "types" in request:
-            return {"task": "extraction", "entities": self.extract(request["text"], request["types"],
-                                                                   request.get("threshold", 0.0))}
-        if "questions" in request or "question" in request:
-            questions = request.get("questions") or {"q": request["question"]}
-            return {"task": "decision", "answers": self.decide(request["state"], questions)}
-        raise ValueError("request needs `questions`/`question` (decision) or `types` (extraction)")
+        """Route by request shape: `questions` (or one `question`) -> decide, `types` -> extract, both -> both.
+
+        A request with both reads one input twice: `text` defaults to `state` and `state` to `text`.
+        """
+        decision, extraction = "questions" in request or "question" in request, "types" in request
+        if not (decision or extraction):
+            raise ValueError("request needs `questions`/`question` (decision), `types` (extraction) or both")
+        result = {"task": "+".join(task for task, asked in (("decision", decision), ("extraction", extraction)) if asked)}
+        if decision:
+            questions = request.get("questions") or ({"q": request["question"]} if "question" in request else None)
+            if not questions:
+                raise ValueError("`questions` must be a nonempty object")
+            result["answers"] = self.decide(request.get("state", request.get("text")), questions)
+        if extraction:
+            result["entities"] = self.extract(request.get("text", request.get("state")), request["types"],
+                                              request.get("threshold", 0.0))
+        return result
 
     predict = __call__
 
