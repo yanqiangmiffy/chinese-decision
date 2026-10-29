@@ -42,6 +42,8 @@ tasks:
 
 > The 2B member of the unified Chinese Decision family: one weight file, two readouts. Given a context and candidates it returns a probability per candidate (`noul` / `choice` / `score` decisions); given a text and entity types (name + description) it returns typed character spans with positions and probabilities. Trained from raw Qwen3.5-2B with exactly the recipe of the [0.8B unified model](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b). On the full CJ-Bench (307,900 items, T = 1) it reaches 85.00% (0.8B unified: 83.46%, decision-only 2B: 84.11%); on the CJ-IE test set its span-extraction micro F1 is 66.0 (0.8B unified: 63.1).
 
+![统一模型：共享的 Qwen3.5 骨干，决策读出（候选字母 logits）和抽取读出（类型化跨度头）](../assets/chinese-decision-unified-acl.png)
+
 ## 模型系列
 
 这是统一模型系列的 **2B 版本**，和 **0.8B 统一模型**用同一套训练配方、同一种模型结构、同一套 CJ-IE 数据，只有底座大小不同。想了解模型结构、请求怎么选择任务、类型怎么写，0.8B 的模型卡写得更详细：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b)。
@@ -66,7 +68,7 @@ tasks:
 - 请求带 `questions` → **决策**：读最后位置上候选字母 `A`–`Z` 的 logits，softmax 后即为概率。
 - 请求带 `types` → **抽取**：把原文逐字回显一遍，在每个字符位置上给跨度分类，合成带位置和概率的实体。
 
-两者共用同一个骨干和同一组 LoRA 参数（训练后合并），只有最后的读出层不同；都是一次前向，**不生成文本**。事件抽取和关系抽取是在这两种读出之上的组合：先用是/否问题判断事件类型、再抽触发词和论元；给定主体、抽客体。模型结构见 [0.8B 模型卡](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) 的架构图和[统一模型设计说明](UNIFIED_MODEL.md)。
+两者共用同一个骨干和同一组 LoRA 参数（训练后合并），只有最后的读出层不同；都是一次前向，**不生成文本**。事件抽取和关系抽取是在这两种读出之上的组合：先用是/否问题判断事件类型、再抽触发词和论元；给定主体、抽客体。模型结构见上方的架构图和[统一模型设计说明](UNIFIED_MODEL.md)。
 
 ## 模型信息
 
@@ -105,7 +107,7 @@ tasks:
 决策读出可以直接用 `transformers`；抽取读出需要本项目的 `decision` 包（跨度头的代码在里面）：
 
 ```bash
-pip install "chinese-decision[torch] @ git+https://github.com/yanqiangmiffy/chinese-decision.git@feat/classification-extraction"
+pip install "chinese-decision[torch] @ git+https://github.com/yanqiangmiffy/chinese-decision.git@main"
 ```
 
 推荐同时安装 `flash-linear-attention`，它为 Qwen3.5 的线性注意力层提供高效 kernel：
