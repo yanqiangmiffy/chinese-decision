@@ -27,39 +27,40 @@ tasks:
 
 <div align="center">
 
-# Chinese Decision Unified 2B
+# chinese-decision-unified-2b
 
 **一份权重，两种读出：中文概率决策 + 类型化信息抽取（2B 版）**
 
 [GitHub 代码](https://github.com/yanqiangmiffy/chinese-decision) ·
 [测试平台 Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) ·
-[0.8B 统一模型](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) ·
+[chinese-decision-unified-0.8b](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) ·
+[chinese-decision-unified-4b](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) ·
 [基础模型 Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) ·
 [训练数据 CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) ·
 [评测集 CJ-Bench](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
 
 </div>
 
-> The 2B member of the unified Chinese Decision family: one weight file, two readouts. Given a context and candidates it returns a probability per candidate (`noul` / `choice` / `score` decisions); given a text and entity types (name + description) it returns typed character spans with positions and probabilities. Trained from raw Qwen3.5-2B with exactly the recipe of the [0.8B unified model](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b). On the full CJ-Bench (307,900 items, T = 1) it reaches 85.00% (0.8B unified: 83.46%, decision-only 2B: 84.11%); on the CJ-IE test set its span-extraction micro F1 is 66.0 (0.8B unified: 63.1).
+> The 2B member of the unified Chinese Decision family: one weight file, two readouts. Given a context and candidates it returns a probability per candidate (`noul` / `choice` / `score` decisions); given a text and entity types (name + description) it returns typed character spans with positions and probabilities. Trained from raw Qwen3.5-2B with exactly the recipe of the [chinese-decision-unified-0.8b model](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b). On the full CJ-Bench (307,900 items, T = 1) it reaches 85.00% (chinese-decision-unified-0.8b: 83.46%, chinese-decision-2b: 84.11%); on the CJ-IE test set its span-extraction micro F1 is 66.0 (chinese-decision-unified-0.8b: 63.1).
 
 ![统一模型：共享的 Qwen3.5 骨干，决策读出（候选字母 logits）和抽取读出（类型化跨度头）](../assets/chinese-decision-unified-acl.png)
 
 ## 模型系列
 
-这是统一模型系列的 **2B 版本**，和 **0.8B 统一模型**用同一套训练配方、同一种模型结构、同一套 CJ-IE 数据，只有底座大小不同。想了解模型结构、请求怎么选择任务、类型怎么写，0.8B 的模型卡写得更详细：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b)。
+这是统一模型系列的 **2B 版本**，和 **chinese-decision-unified-0.8b**用同一套训练配方、同一种模型结构、同一套 CJ-IE 数据，只有底座大小不同。想了解模型结构、请求怎么选择任务、类型怎么写，0.8B 的模型卡写得更详细：[Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b)。
 
-| | 0.8B 统一 | **2B 统一（本模型）** |
-|---|---|---|
-| 仓库 | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) |
-| 底座 | Qwen3.5-0.8B | Qwen3.5-2B |
-| 权重文件 | 单个 `model.safetensors`，约 1.5 GB | 单个 `model.safetensors`，约 3.8 GB |
-| 跨度头 | 约 3.4M 参数 | 约 6.6M 参数 |
-| CJ-Bench 全量准确率（T = 1） | 83.46% | **85.00%** |
-| CJ-IE 测试集决策准确率 | 90.65% | **91.30%** |
-| CJ-IE 测试集抽取 micro F1 | 63.1 | **66.0** |
-| 训练耗时（4 × A800） | 约 17 小时 | 约 26 小时 |
+| | chinese-decision-unified-0.8b | **chinese-decision-unified-2b（本模型）** | chinese-decision-unified-4b |
+|---|---|---|---|
+| 仓库 | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-4b) |
+| 底座 | Qwen3.5-0.8B | Qwen3.5-2B | Qwen3.5-4B |
+| 权重文件 | 单个 `model.safetensors`，约 1.5 GB | 单个 `model.safetensors`，约 3.8 GB | 单个 `model.safetensors`，约 8.4 GB |
+| 跨度头 | 约 3.4M 参数 | 约 6.6M 参数 | 约 8.2M 参数 |
+| CJ-Bench 全量准确率（T = 1） | 83.46% | **85.00%** | 86.86% |
+| CJ-IE 测试集决策准确率 | 90.65% | **91.30%** | 91.89% |
+| CJ-IE 测试集抽取 micro F1 | 63.1 | **66.0** | 68.9 |
+| 训练耗时（4 × A800） | 约 17 小时 | 约 26 小时 | 约 83 小时 |
 
-只做决策、不需要抽取时，还有纯决策版：[chinese-decision-0.8b](MODEL_CARD_0_8B.md) · [chinese-decision-2b](MODEL_CARD_2B.md) · [chinese-decision-4b](MODEL_CARD_4B.md)。**统一 2B 的决策准确率反而高于纯决策版 2B**（85.00% 对 84.11%，同为 T = 1），所以需要 2B 精度时，直接用统一版即可，决策和抽取一份权重都有。
+只做决策、不需要抽取时，还有纯决策版：[chinese-decision-0.8b](MODEL_CARD_0_8B.md) · [chinese-decision-2b](MODEL_CARD_2B.md) · [chinese-decision-4b](MODEL_CARD_4B.md)。**统一 2B 的决策准确率反而高于chinese-decision-2b**（85.00% 对 84.11%），所以需要 2B 精度时，直接用统一版即可，决策和抽取一份权重都有。
 
 ## 简介
 
@@ -348,23 +349,23 @@ Studio 里的 39 条案例和两个流水线场景（每条都记录了成功和
 
 ### 决策：CJ-Bench 全量
 
-在 CJ-Bench 全量测试集（307,900 条）上评测本仓库发布的合并权重（Transformers，BF16）。**概率使用 T = 1（不做温度校准）**，候选项保持原始顺序；温度不改变选出的答案，所以准确率不受影响。三列使用同一口径：0.8B 统一模型、纯决策版 2B（未合并 adapter 的评测，合并版准确率相同）和本模型。
+在 CJ-Bench 全量测试集（307,900 条）上评测本仓库发布的合并权重（Transformers，BF16）。**概率使用 T = 1（不做温度校准）**，候选项保持原始顺序；温度不改变选出的答案，所以准确率不受影响。chinese-decision-2b 一列的 ACC 是发布权重的结果（与 README 一致，ACC 不受温度影响）；它的 ECE 和 NLL 取自同一模型在 T = 1 下的评测，和其余两列口径一致。
 
-| 切分 | 样本数 | 0.8B 统一 | 纯决策版 2B | **本模型** | 比 0.8B 统一 | 比纯决策版 2B |
+| 切分 | 样本数 | chinese-decision-unified-0.8b | chinese-decision-2b | **chinese-decision-unified-2b** | 比 chinese-decision-unified-0.8b | 比chinese-decision-2b |
 |---|---:|---:|---:|---:|---:|---:|
 | **整体（micro）** | 307,900 | 83.46 | 84.11 | **85.00** | +1.54 | +0.89 |
-| 四领域等权平均（macro） | — | 76.17 | 77.13 | **79.12** | +2.95 | +1.99 |
-| 通用 | 100,000 | 73.86 | 73.95 | **75.43** | +1.57 | +1.48 |
-| 医疗 | 200,000 | 88.61 | 89.50 | **90.03** | +1.41 | +0.52 |
-| 法律 | 4,300 | 67.88 | 69.05 | **73.42** | +5.53 | +4.37 |
-| 金融 | 3,600 | 74.31 | 76.03 | **77.61** | +3.31 | +1.58 |
-| `noul` | 134,577 | 94.88 | 95.09 | **95.24** | +0.36 | +0.15 |
-| `choice` | 134,577 | 79.01 | 80.14 | **81.68** | +2.68 | +1.54 |
-| `score` | 38,746 | 57.17 | 57.64 | **58.91** | +1.73 | +1.26 |
+| 四领域等权平均（macro） | — | 76.17 | 77.18 | **79.12** | +2.95 | +1.94 |
+| 通用 | 100,000 | 73.86 | 73.96 | **75.43** | +1.57 | +1.47 |
+| 医疗 | 200,000 | 88.61 | 89.50 | **90.03** | +1.41 | +0.53 |
+| 法律 | 4,300 | 67.88 | 68.74 | **73.42** | +5.53 | +4.68 |
+| 金融 | 3,600 | 74.31 | 76.50 | **77.61** | +3.31 | +1.11 |
+| `noul` | 134,577 | 94.88 | 95.11 | **95.24** | +0.36 | +0.13 |
+| `choice` | 134,577 | 79.01 | 80.12 | **81.68** | +2.68 | +1.56 |
+| `score` | 38,746 | 57.17 | 57.67 | **58.91** | +1.73 | +1.24 |
 
 校准（T = 1，15 个等宽分箱，ECE 单位 %）与 hard NLL：
 
-| 切分 | 0.8B 统一 ECE | 纯决策版 2B ECE | **本模型 ECE** | 本模型 hard NLL（0.8B 统一 / 纯决策版 2B） |
+| 切分 | chinese-decision-unified-0.8b ECE | chinese-decision-2b ECE | **chinese-decision-unified-2b ECE** | chinese-decision-unified-2b hard NLL（chinese-decision-unified-0.8b / chinese-decision-2b） |
 |---|---:|---:|---:|---:|
 | 整体 | 1.1 | 1.5 | **0.9** | **0.381**（0.417 / 0.413） |
 | 通用 | 2.8 | 3.0 | **2.5** | 0.605（0.638 / 0.658） |
@@ -373,13 +374,13 @@ Studio 里的 39 条案例和两个流水线场景（每条都记录了成功和
 | 金融 | **1.1** | 2.0 | 2.2 | 0.526（0.605 / 0.579） |
 | `noul` / `choice` / `score` | 0.7 / 1.3 / 2.3 | 0.6 / 2.2 / 2.6 | 0.7 / **1.0** / **2.0** | 0.114 / 0.500 / 0.946 |
 
-> 发布的 T = 1.0617 在 CJ-Dataset 的独立校准划分上拟合（1,984 条硬标签样本）。它在 CJ-Bench 上的整体指标没有重新跑，上面的 ECE 都是 T = 1。法律和金融样本少（4,300 / 3,600 条），这两个领域的 ECE 波动较大，本模型在这两个领域的 ECE 并不比 0.8B 统一模型好。ACC 和 ECE 只在硬标签样本上计算。与 Jev、Chinese-Jev 等外部基线的对比见 [纯决策版模型卡](MODEL_CARD_0_8B.md#cj-bench-测试集)。
+> 发布的 T = 1.0617 在 CJ-Dataset 的独立校准划分上拟合（1,984 条硬标签样本）。它在 CJ-Bench 上的整体指标没有重新跑，上面的 ECE 都是 T = 1。法律和金融样本少（4,300 / 3,600 条），这两个领域的 ECE 波动较大，本模型在这两个领域的 ECE 并不比 chinese-decision-unified-0.8b好。ACC 和 ECE 只在硬标签样本上计算。与 Jev、Chinese-Jev 等外部基线的对比见 [chinese-decision-0.8b 模型卡](MODEL_CARD_0_8B.md#cj-bench-测试集)。
 
 ### 决策：CJ-IE 测试集（抽取相关的分类任务）
 
-CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**是内部评测集，不是公开基准**。决策任务共 84,894 条，整体准确率 **91.30%**（0.8B 统一：90.65%），ECE 0.57%，hard NLL 0.253：
+CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**是内部评测集，不是公开基准**。决策任务共 84,894 条，整体准确率 **91.30%**（chinese-decision-unified-0.8b：90.65%），ECE 0.57%，hard NLL 0.253：
 
-| 任务 | 内容 | 样本数 | 本模型 ACC (%) | 0.8B 统一 |
+| 任务 | 内容 | 样本数 | chinese-decision-unified-2b ACC (%) | chinese-decision-unified-0.8b |
 |---|---|---:|---:|---:|
 | `doc_event` | 公告是否披露了某类股权事件 | 1,942 | 99.74 | 99.74 |
 | `doc_field` | 某事件的某个字段是哪个提及 | 2,756 | 97.50 | 97.13 |
@@ -388,23 +389,23 @@ CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**
 | `re_pair` | 给定主体和客体，选关系或“无关系” | 40,417 | 89.57 | 88.77 |
 | `ee_category` | 事件大类（DuEE 9 选 1、FewFC 10 类 + 无） | 5,863 | 83.75 | 84.94 |
 
-旧能力保持（CJ 老来源 3,032 条）：91.88%（0.8B 统一：91.51%）。
+旧能力保持（CJ 老来源 3,032 条）：91.88%（chinese-decision-unified-0.8b：91.51%）。
 
 ### 抽取：CJ-IE 测试集
 
 **精确匹配**（起止位置 + 类型都对才算对），35 个来源共 232,291 个标注跨度：
 
-| | 精确率 | 召回率 | F1 | 0.8B 统一 F1 |
+| | 精确率 | 召回率 | F1 | chinese-decision-unified-0.8b F1 |
 |---|---:|---:|---:|---:|
 | micro | 75.4 | 58.6 | **66.0** | 63.1 |
 | 来源宏平均（35 个） | — | — | **66.3** | 62.5 |
-| NER（31 个来源） | — | — | 67.5 | 64.0 |
+| NER（31 个来源） | — | — | 67.4 | 64.0 |
 | 关系（DuIE、CMeIE） | — | — | 55.4 | 47.2 |
 | 事件论元（DuEE、FewFC） | — | — | 59.2 | 54.5 |
 
-35 个来源里有 30 个比 0.8B 统一模型好，涨幅最大的是 Weibo（+15.3）、Boson（+12.0）、math_high（+10.3）、CMeIE（+8.4）、DuIE（+8.1）。提升大部分来自召回（+3.1），精确率也涨了约 2 点。模型仍然偏保守：精确率明显高于召回率。
+35 个来源里有 30 个比 chinese-decision-unified-0.8b好，涨幅最大的是 Weibo（+15.3）、Boson（+12.0）、math_high（+10.3）、CMeIE（+8.4）、DuIE（+8.1）。提升大部分来自召回（+3.1），精确率也涨了约 2 点。模型仍然偏保守：精确率明显高于召回率。
 
-| 来源 | 内容 | P | R | F1 | 0.8B 统一 F1 |
+| 来源 | 内容 | P | R | F1 | chinese-decision-unified-0.8b F1 |
 |---|---|---:|---:|---:|---:|
 | Resume | 简历实体 | 90.4 | 84.4 | **87.3** | 88.1 |
 | IMCS21 | 医患对话医学实体 | 86.9 | 86.5 | **86.7** | 85.7 |
@@ -430,7 +431,7 @@ CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**
 
 ## 训练细节
 
-配方与 0.8B 统一模型完全相同，只有两处因为模型更大而不同：每个 micro-batch 的 token 上限降为一半（2B 每个 token 的激活更大），因此总步数更多。
+配方与 chinese-decision-unified-0.8b完全相同，只有两处因为模型更大而不同：每个 micro-batch 的 token 上限降为一半（2B 每个 token 的激活更大），因此总步数更多。
 
 | 项目 | 设置 |
 |---|---|
@@ -450,13 +451,13 @@ CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**
 
 - **抽取召回偏低**：CJ-IE 测试集上 micro F1 66.0，精确率 75.4、召回率 58.6。边界要求精确匹配，实体边界的细小差异也算错。
 - **说明的写法影响很大**：只写类型名、没有定义的类型，或训练里没出现过的新类型，效果会明显下降，甚至一个都抽不出（`military_ner`）。上线前请在自己的数据上用自己的类型测一遍。
-- **某些领域和关系较弱**：社交媒体（Weibo 召回 38.5%）、多类型细粒度语料（MultiCoNER2）、医学关系（CMeIE，召回 27.1%）；事件里带方向的角色会串（0.8B 上的观察）；`ee_category`（事件大类）比 0.8B 统一模型低 1.2 个点。
+- **某些领域和关系较弱**：社交媒体（Weibo 召回 38.5%）、多类型细粒度语料（MultiCoNER2）、医学关系（CMeIE，召回 27.1%）；事件里带方向的角色会串（0.8B 上的观察）；`ee_category`（事件大类）比 chinese-decision-unified-0.8b低 1.2 个点。
 - **通用模型不如专项模型**：同一份 CLUENER 官方 dev（1,343 句），之前只用 4,000 句 CLUENER 专门训练的实验 F1 是 78.7，统一 2B 是 62.5。只需要一套固定标签的 NER 时，专项模型会更准；统一模型的价值在于一份权重覆盖多种任务和多套类型。
 - **不支持意图 + 槽位填充**：训练里没有槽位数据。意图用决策读出，槽位用抽取读出，需要自己级联并自己评测。
 - **抽取表示能力有限**：跨度最宽 20 个字；边界落在英文单词内部的实体表示不了；文本较长时请自己按句切窗（训练时 ≤ 300 字）。
 - **只能用 PyTorch 抽取**：GGUF / llama.cpp 版本没有跨度头，只有决策读出。
-- **比 0.8B 更大更慢**：约 2.4 倍参数，3.8 GB 权重；对延迟或显存敏感时，0.8B 统一模型是更轻的选择。
-- **法律和金融训练数据仍然很少**（各约 24,000 条），`score` 题型最弱（CJ-Bench 58.91%）；法律和金融的 ECE（T = 1）也不如 0.8B 统一模型。
+- **比 0.8B 更大更慢**：约 2.4 倍参数，3.8 GB 权重；对延迟或显存敏感时，chinese-decision-unified-0.8b是更轻的选择。
+- **法律和金融训练数据仍然很少**（各约 24,000 条），`score` 题型最弱（CJ-Bench 58.91%）；法律和金融的 ECE（T = 1）也不如 chinese-decision-unified-0.8b。
 - **`confidence` 不是准确率**，温度只在 CJ-Dataset 的校准划分上拟合；按概率阈值自动执行前，请先在自己的数据上验证。
 - **CJ-IE 测试集是内部评测集**，类型已经标准化，数字不能和各语料的公开榜单直接比较。
 - **标签含义来自上游任务**，请勿将输出作为医疗、法律或金融决策的唯一依据；**不用于文本生成**，`generate()` 的输出没有意义；仅支持中文。

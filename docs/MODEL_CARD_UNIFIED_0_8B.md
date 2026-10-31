@@ -27,14 +27,15 @@ tasks:
 
 <div align="center">
 
-# Chinese Decision Unified 0.8B
+# chinese-decision-unified-0.8b
 
 **一份权重，两种读出：中文概率决策 + 类型化信息抽取**
 
 [GitHub 代码](https://github.com/yanqiangmiffy/chinese-decision) ·
 [测试平台 Decision Studio](https://github.com/yanqiangmiffy/chinese-decision-studio) ·
-[纯决策版 chinese-decision-0.8b](https://huggingface.co/quincyqiang/chinese-decision-0.8b) ·
-[2B 统一模型](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) ·
+[chinese-decision-0.8b](https://huggingface.co/quincyqiang/chinese-decision-0.8b) ·
+[chinese-decision-unified-2b](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) ·
+[chinese-decision-unified-4b](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) ·
 [基础模型 Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) ·
 [训练数据 CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) ·
 [评测集 CJ-Bench](https://huggingface.co/datasets/bbldCVer-hf/CJ-Bench)
@@ -47,18 +48,18 @@ tasks:
 
 ## 模型系列
 
-统一模型有两个尺寸，**训练配方、模型结构和 CJ-IE 数据完全相同**，只有底座大小不同：
+统一模型有三个尺寸，**训练配方、模型结构和 CJ-IE 数据完全相同**，只有底座大小不同：
 
-| | **0.8B 统一（本模型）** | 2B 统一 |
-|---|---|---|
-| 仓库 | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) |
-| 底座 | Qwen3.5-0.8B | Qwen3.5-2B |
-| 权重文件 | 单个 `model.safetensors`，约 1.5 GB | 单个 `model.safetensors`，约 3.8 GB |
-| CJ-Bench 全量准确率（T = 1） | 83.46% | **85.00%** |
-| CJ-IE 测试集决策准确率 | 90.65% | **91.30%** |
-| CJ-IE 测试集抽取 micro F1 | 63.1 | **66.0** |
+| | **chinese-decision-unified-0.8b（本模型）** | chinese-decision-unified-2b | chinese-decision-unified-4b |
+|---|---|---|---|
+| 仓库 | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-4b) |
+| 底座 | Qwen3.5-0.8B | Qwen3.5-2B | Qwen3.5-4B |
+| 权重文件 | 单个 `model.safetensors`，约 1.5 GB | 单个 `model.safetensors`，约 3.8 GB | 单个 `model.safetensors`，约 8.4 GB |
+| CJ-Bench 全量准确率（T = 1） | 83.46% | 85.00% | **86.86%** |
+| CJ-IE 测试集决策准确率 | 90.65% | 91.30% | **91.89%** |
+| CJ-IE 测试集抽取 micro F1 | 63.1 | 66.0 | **68.9** |
 
-对延迟和显存敏感时用 0.8B；需要更高的决策和抽取精度时用 2B（[2B 模型卡](MODEL_CARD_UNIFIED_2B.md)）。只做决策、不需要抽取时，还有纯决策版：[chinese-decision-0.8b](MODEL_CARD_0_8B.md)。
+对延迟和显存敏感时用本模型；需要更高的决策和抽取精度时用 [chinese-decision-unified-2b](MODEL_CARD_UNIFIED_2B.md)；追求最高精度、尤其是法律和金融时用 [chinese-decision-unified-4b](MODEL_CARD_UNIFIED_4B.md)。只做决策、不需要抽取时，还有纯决策版：[chinese-decision-0.8b](MODEL_CARD_0_8B.md)。
 
 ## 简介
 
@@ -355,7 +356,7 @@ Studio 里的 39 条案例和两个流水线场景，逐条记录了成功和失
 
 在 CJ-Bench 全量测试集（307,900 条）上评测本仓库发布的合并权重（Transformers，BF16）。**概率使用 T = 1（不做温度校准）**，候选项保持原始顺序；温度不改变选出的答案，所以准确率不受影响。对照数字是纯决策版 [chinese-decision-0.8b](MODEL_CARD_0_8B.md) 在同一测试集上的结果。
 
-| 切分 | 样本数 | 纯决策版 ACC (%) | **本模型 ACC (%)** | 差 |
+| 切分 | 样本数 | chinese-decision-0.8b ACC (%) | **chinese-decision-unified-0.8b ACC (%)** | 差 |
 |---|---:|---:|---:|---:|
 | **整体（micro）** | 307,900 | 83.11 | **83.46** | +0.36 |
 | 四领域等权平均（macro） | — | 75.74 | **76.17** | +0.43 |
@@ -367,9 +368,9 @@ Studio 里的 39 条案例和两个流水线场景，逐条记录了成功和失
 | `choice` | 134,577 | 78.32 | **79.01** | +0.69 |
 | `score` | 38,746 | 56.45 | **57.17** | +0.73 |
 
-校准（T = 1，15 个等宽分箱，ECE 单位 %）。纯决策版一列取自其模型卡里“T = 1 时的 ECE”，两边口径一致：
+校准（T = 1，15 个等宽分箱，ECE 单位 %）。chinese-decision-0.8b 一列取自其模型卡里“T = 1 时的 ECE”，两边口径一致：
 
-| 切分 | 纯决策版 ECE | 本模型 ECE | 本模型 hard NLL |
+| 切分 | chinese-decision-0.8b ECE | chinese-decision-unified-0.8b ECE | chinese-decision-unified-0.8b hard NLL |
 |---|---:|---:|---:|
 | 整体 | 1.1 | 1.1 | 0.417 |
 | 通用 | 3.0 | 2.8 | 0.638 |
@@ -378,7 +379,7 @@ Studio 里的 39 条案例和两个流水线场景，逐条记录了成功和失
 | 金融 | 1.5 | 1.1 | 0.605 |
 | `noul` / `choice` / `score` | 0.4 / 1.5 / 2.4 | 0.7 / 1.3 / 2.3 | 0.121 / 0.565 / 0.978 |
 
-> 发布的 T = 1.1326 在 CJ-Dataset 的独立校准划分上拟合（1,984 条硬标签样本）。它在 CJ-Bench 上的整体指标没有重新跑，上面的 ECE 都是 T = 1。ACC 和 ECE 只在硬标签样本上计算。基线之外的对比（Jev、Chinese-Jev 等）见 [纯决策版模型卡](MODEL_CARD_0_8B.md#cj-bench-测试集)，本模型相对纯决策版没有明显差别，不再重复。
+> 发布的 T = 1.1326 在 CJ-Dataset 的独立校准划分上拟合（1,984 条硬标签样本）。它在 CJ-Bench 上的整体指标没有重新跑，上面的 ECE 都是 T = 1。ACC 和 ECE 只在硬标签样本上计算。基线之外的对比（Jev、Chinese-Jev 等）见 [chinese-decision-0.8b 模型卡](MODEL_CARD_0_8B.md#cj-bench-测试集)，本模型相对 chinese-decision-0.8b 没有明显差别，不再重复。
 
 ### 决策：CJ-IE 测试集（抽取相关的分类任务）
 
@@ -453,7 +454,7 @@ CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**
 - **不支持意图 + 槽位填充**：训练里没有槽位数据。意图用决策读出，槽位用抽取读出，需要自己级联并自己评测。
 - **抽取表示能力有限**：跨度最宽 20 个字；边界落在英文单词内部的实体表示不了；文本较长时请自己按句切窗（训练时 ≤ 300 字）。
 - **只能用 PyTorch 抽取**：GGUF / llama.cpp 版本没有跨度头，只有决策读出。
-- **决策能力基本等同于纯决策版**：法律和金融训练数据仍然很少（各约 24,000 条），`score` 题型最弱（CJ-Bench 57.17%）；只需要决策时，两个版本任选其一。
+- **决策能力基本等同于 chinese-decision-0.8b**：法律和金融训练数据仍然很少（各约 24,000 条），`score` 题型最弱（CJ-Bench 57.17%）；只需要决策时，两个版本任选其一。
 - **`confidence` 不是准确率**，温度只在 CJ-Dataset 的校准划分上拟合；按概率阈值自动执行前，请先在自己的数据上验证。
 - **CJ-IE 测试集是内部评测集**，类型已经标准化，数字不能和各语料的公开榜单直接比较。
 - **标签含义来自上游任务**，请勿将输出作为医疗、法律或金融决策的唯一依据；**不用于文本生成**，`generate()` 的输出没有意义；仅支持中文。
