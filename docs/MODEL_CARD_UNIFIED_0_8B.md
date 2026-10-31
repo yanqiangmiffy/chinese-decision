@@ -84,7 +84,7 @@ tasks:
 | 校准温度 | T = 1.1326（见 `decision_config.json`，只作用于决策读出） |
 | 最大输入 | 决策 16,384 tokens；抽取训练时文本按 ≤ 300 字切窗 |
 | 候选项数 | 决策单题 2–26（训练数据覆盖 2–16） |
-| 抽取 | 回显布局；跨度最宽 20 个字；none 先验校正 `none_shift = log(1/0.2)` |
+| 抽取 | 回显布局；跨度最宽 20 个字；none 先验校正 `none_shift = log(1/0.2)`（输出的概率用它，保持校准）；判定阈值 `decision_shift = 0.75`（决定哪些跨度算实体，在 CJ-IE dev 上按 F1 选出） |
 | 提示版本 | `hmm-zh-v1` |
 | 语言 | 中文 |
 
@@ -95,7 +95,7 @@ tasks:
 | `model.safetensors` | 合并后的骨干权重 + `span_head.*`，同一份权重 |
 | `config.json`、`generation_config.json` | 模型配置 |
 | `tokenizer.json`、`tokenizer_config.json`、`chat_template.jinja` | Qwen3.5 分词器与聊天模板 |
-| `decision_config.json` | 校准温度、提示版本、最大长度，以及 `extraction`（跨度头结构、`none_shift`、是否回显） |
+| `decision_config.json` | 校准温度、提示版本、最大长度，以及 `extraction`（跨度头结构、`none_shift`、`decision_shift`、是否回显） |
 | `training_summary.json` | 训练配置、选中的检查点及其验证分数 |
 | `cj_bench_report.json` | CJ-Bench 全量评测的完整指标（T = 1，分领域、题型、来源） |
 | `cj_ie_test_report.json` | CJ-IE 测试集的完整指标：决策逐来源，抽取逐来源和逐类型（含实体 ECE） |
@@ -405,6 +405,8 @@ CJ-IE 的测试集由各语料的官方 dev / test 构成，做过去泄漏，**
 | micro | 73.3 | 55.5 | **63.1** |
 | 来源宏平均（35 个） | — | — | 62.5 |
 | NER（31 个来源）/ 关系（2）/ 事件论元（2）宏平均 | — | — | 64.0 / 47.2 / 54.5 |
+
+> **判定阈值（2026-10-31 更新）。** 上表和下面的逐来源表都按发布时的解码方式计算：用 `none_shift = log 5` 判定哪些跨度算实体。这个值让输出的概率保持校准，但判定门槛偏高、召回偏低。现在 `decision_config.json` 增加了 `decision_shift = 0.75`（在 CJ-IE dev 上按 F1 选出，test 只报一次）：概率仍按 `none_shift` 计算，是否输出某个实体按 `decision_shift` 判定。默认推理下，CJ-IE test 的 micro P / R / F1 从 73.3 / 55.4 / 63.1 变为 **66.7 / 62.8 / 64.7**，实体 ECE 从 4.2% 变为 4.0%。想要原来的高精确率，可以在加载后把 `config.extraction.decision_shift` 设成 `None`。详见[扫描报告](NONE_SHIFT_SWEEP.md)。
 
 模型偏保守：精确率明显高于召回率。各来源差别很大：
 

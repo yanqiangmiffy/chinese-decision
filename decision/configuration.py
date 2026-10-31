@@ -27,8 +27,9 @@ class ExtractionConfig:
     out: int = 256
     width_dim: int = 32
     dropout: float = 0.1
-    none_shift: float = 0.0          # log(1 / none_weight) added to the none utility at inference
+    none_shift: float = 0.0          # log(1 / none_weight) added to the none utility: calibrated probabilities
     echo: bool = True                # spans are read from a one-unit-per-character copy of the text
+    decision_shift: float | None = None  # none shift that decides which spans are entities; None: none_shift
 
     HEAD_FIELDS = ("hidden_size", "max_span_units", "inner", "out", "width_dim", "dropout")
 
@@ -36,11 +37,16 @@ class ExtractionConfig:
         return {name: getattr(self, name) for name in self.HEAD_FIELDS}
 
     def to_dict(self):
-        return {"head": self.head_kwargs(), "none_shift": self.none_shift, "echo": self.echo}
+        data = {"head": self.head_kwargs(), "none_shift": self.none_shift, "echo": self.echo}
+        if self.decision_shift is not None:
+            data["decision_shift"] = self.decision_shift
+        return data
 
     @classmethod
     def from_dict(cls, data):
-        return cls(**data["head"], none_shift=float(data.get("none_shift", 0.0)), echo=bool(data.get("echo", True)))
+        decision_shift = data.get("decision_shift")
+        return cls(**data["head"], none_shift=float(data.get("none_shift", 0.0)), echo=bool(data.get("echo", True)),
+                   decision_shift=None if decision_shift is None else float(decision_shift))
 
 
 @dataclass

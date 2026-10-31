@@ -137,6 +137,17 @@ class DecodeTests(unittest.TestCase):
         # Shifting "none" up by log(1 / none_weight) can turn a weak span back into none.
         self.assertEqual(decode(item, utilities, none_shift=6.0), [])
 
+    def test_decision_shift_picks_spans_but_probabilities_stay_calibrated(self):
+        decode = DecisionProcessor.decode_spans
+        item = {"cands": [(0, 0)], "units": [(0, 1)], "types": ["name"]}
+        utilities = torch.tensor([[0., 0.5]])
+        self.assertEqual(decode(item, utilities, none_shift=1.0), [])
+        (found,) = decode(item, utilities, none_shift=1.0, decision_shift=0.0)
+        self.assertEqual(found[:3], (0, 1, "name"))
+        self.assertAlmostEqual(found[3], torch.tensor([1.0, 0.5]).softmax(-1)[1].item(), places=6)
+        # Without a decision shift the calibrated shift decides, as before.
+        self.assertEqual(decode(item, utilities, none_shift=0.0, decision_shift=None)[0][:3], (0, 1, "name"))
+
     def test_entity_metrics_count_exact_matches(self):
         items = [{"gold_entities": {(0, 2, "name"), (3, 5, "loc")}, "unrepresented": 0}]
         metrics = entity_metrics(items, [[(0, 2, "name", 0.9), (3, 5, "name", 0.6)]])

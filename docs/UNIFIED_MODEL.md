@@ -29,7 +29,7 @@
 ```text
 model/
   model.safetensors        底座（LoRA 已合并）+ span_head.* 张量，同一份权重；大模型自动分片，仍是一份权重
-  decision_config.json     temperature、prompt_version、max_length，以及 extraction: {head, none_shift, echo}
+  decision_config.json     temperature、prompt_version、max_length，以及 extraction: {head, none_shift, decision_shift, echo}
   tokenizer 文件、training_summary.json
 ```
 

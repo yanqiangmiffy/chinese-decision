@@ -125,7 +125,7 @@ class DecisionPipeline:
             logits = logits.cpu().tolist() + self.candidate_logits(items[joint:], token_budget=token_budget)
             extraction = self.model.config.extraction
             found = self.processor.decode_spans(row, utilities, extraction.none_shift if extraction else 0.0,
-                                                threshold)
+                                                threshold, decision_shift=extraction.decision_shift if extraction else None)
         else:
             logits = self.candidate_logits(items, token_budget=token_budget)
             found, = self.model.predict_spans([row], self.processor, threshold)

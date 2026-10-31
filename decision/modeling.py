@@ -258,24 +258,43 @@ class DecisionModel(nn.Module):
         return logits, self.span_head(hidden[:len(rows)], batch)
 
     @torch.no_grad()
-    def predict_spans(self, items, processor, threshold=0.0, none_shift=None, token_budget=12288, batch_size=16):
-        """Decoded `(start, end, type, probability)` entities for encoded span rows, in input order."""
+    def predict_spans(self, items, processor, threshold=0.0, none_shift=None, token_budget=12288, batch_size=16,
+                      decision_shift=None):
+        """Decoded `(start, end, type, probability)` entities for encoded span rows, in input order.
+
+        `none_shift` and `decision_shift` default to the model's (see `DecisionProcessor.decode_spans`);
+        passing `none_shift` alone decides with that shift too.
+        """
+        extraction = self.config.extraction
         if none_shift is None:
-            none_shift = self.config.extraction.none_shift if self.config.extraction else 0.0
+            none_shift = extraction.none_shift if extraction else 0.0
+            if decision_shift is None and extraction:
+                decision_shift = extraction.decision_shift
+        predictions, = self.predict_spans_grid(items, processor, [(none_shift, threshold, True, decision_shift)],
+                                               token_budget, batch_size)
+        return predictions
+
+    @torch.no_grad()
+    def predict_spans_grid(self, items, processor, settings, token_budget=12288, batch_size=16):
+        """`predict_spans` for several `(none_shift, threshold, flat, decision_shift)` decodings of one pass.
+
+        Returns one list of predictions per setting, each in input order.
+        """
         was_training = self.training
         self.eval()
         device = self.device
-        predictions = [None] * len(items)
+        predictions = [[None] * len(items) for _ in settings]
         order = sorted(range(len(items)), key=lambda i: len(items[i]["input_ids"]))
         for batch_items in greedy_batches([dict(items[i], index=i) for i in order], batch_size, token_budget):
             batch = processor.collate_extraction(batch_items).to(device)
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
                 hidden = self.hidden_states(batch.input_ids, batch.attention_mask)
-            utilities, start = self.span_head(hidden, batch), 0
+            utilities, start = self.span_head(hidden, batch).float().cpu(), 0
             for item in batch_items:
                 count = len(item["cands"])
-                predictions[item["index"]] = processor.decode_spans(item, utilities[start:start + count],
-                                                                    none_shift, threshold)
+                for out, (none_shift, threshold, flat, decision_shift) in zip(predictions, settings):
+                    out[item["index"]] = processor.decode_spans(item, utilities[start:start + count],
+                                                                none_shift, threshold, flat, decision_shift)
                 start += count
         self.train(was_training)
         return predictions

@@ -389,15 +389,24 @@ class DecisionProcessor:
                                torch.cat(targets), torch.cat(masks))
 
     @staticmethod
-    def decode_spans(item, utilities, none_shift=0.0, threshold=0.0, flat=True):
+    def decode_spans(item, utilities, none_shift=0.0, threshold=0.0, flat=True, decision_shift=None):
         """Predicted `(start, end, type, probability)` entities of one encoded row.
 
-        Each span takes its most probable choice; non-none choices at or above `threshold` are kept,
-        and with `flat` overlapping spans are resolved greedily by probability.
+        Probabilities are the softmax with `none_shift` added to the none utility (the calibrated
+        ones). Which spans are entities is decided with `decision_shift` instead when it is given:
+        each span takes its best choice under that shift, non-none choices whose calibrated
+        probability is at or above `threshold` are kept, and with `flat` overlapping spans are
+        resolved greedily by probability.
         """
         utilities = utilities[:, :1 + len(item["types"])].float().clone()
         utilities[:, 0] += none_shift
-        confidence, choice = utilities.softmax(-1).max(-1)
+        probabilities = utilities.softmax(-1)
+        if decision_shift is None:
+            choice = probabilities.argmax(-1)
+        else:
+            utilities[:, 0] += decision_shift - none_shift
+            choice = utilities.argmax(-1)
+        confidence = probabilities.gather(1, choice[:, None]).squeeze(1)
         picked = ((choice > 0) & (confidence >= threshold)).nonzero().flatten().tolist()
         found = sorted(((confidence[k].item(), k, choice[k].item() - 1) for k in picked), reverse=True)
         taken, result = set(), []

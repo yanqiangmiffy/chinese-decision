@@ -41,6 +41,11 @@ class ConfigTests(unittest.TestCase):
         config = DecisionConfig.from_dict(data)
         self.assertEqual(config.extraction.head_kwargs()["inner"], 32)
         self.assertEqual(config.to_dict()["extraction"], data["extraction"])
+        self.assertIsNone(config.extraction.decision_shift)
+        data["extraction"]["decision_shift"] = 0.75
+        config = DecisionConfig.from_dict(data)
+        self.assertEqual(config.extraction.decision_shift, 0.75)
+        self.assertEqual(config.to_dict()["extraction"], data["extraction"])
 
     def test_a_raw_base_directory_gets_the_defaults(self):
         with tempfile.TemporaryDirectory() as root:
