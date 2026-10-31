@@ -178,7 +178,7 @@ B: {key₂} — {描述₂}
 
 除特别说明外，下文均为发布权重（LoRA 已合并进基础模型）在 **CJ-Bench 全部 307,900 条**上的结果（硬标签 304,822、软标签 3,078），无过滤、无截断。ACC / ECE 只计硬标签（ECE 为 15 个等宽分箱），NLL / Brier 包含软标签；Micro 按样本加权，Macro 为四个领域等权平均。单位均为 %。
 
-> **关于温度 T**：概率按 p = softmax(z / T) 计算，z 为候选字母的 logits。纯决策模型使用 `decision_config.json` 中的默认温度；统一模型的 CJ-Bench 结果用 **T = 1**（直接 softmax，不校准），标 † 的 ECE 即为 T = 1 下的值。温度只调整概率的尖锐程度，**不改变选出的答案**，所以 ACC 在两种口径下可以直接比较，ECE 不能。训练过程中各 checkpoint（合并前，T = 1）的结果见 [训练过程 checkpoint 评测](docs/TRAINING_HISTORY.md)。
+> **关于温度 T**：概率按 p = softmax(z / T) 计算，z 为候选字母的 logits。纯决策模型使用 `decision_config.json` 中的默认温度；统一模型的 CJ-Bench 结果用 **T = 1**（直接 softmax，不校准），标 † 的 ECE、NLL、Brier 即为 T = 1 下的值（Score MAE 是期望等级的误差，受温度影响很小，可以直接比较）。温度只调整概率的尖锐程度，**不改变选出的答案**，所以 ACC 在两种口径下可以直接比较，ECE 不能。训练过程中各 checkpoint（合并前，T = 1）的结果见 [训练过程 checkpoint 评测](docs/TRAINING_HISTORY.md)。
 
 ### 主要结果
 
@@ -188,13 +188,13 @@ B: {key₂} — {描述₂}
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | chinese-decision-0.8b | BF16 | 83.11 | 75.74 | **0.27** | 0.4313 | 0.2238 | 0.5844 |
 | chinese-decision-0.8b-gguf | Q8_0 | 83.12 | 75.81 | **0.27** | 0.4313 | 0.2238 | 0.5840 |
-| chinese-decision-unified-0.8b | BF16 | 83.46 | 76.17 | 1.1† | — | — | — |
+| chinese-decision-unified-0.8b | BF16 | 83.46 | 76.17 | 1.1† | 0.4243† | 0.2198† | 0.5786 |
 | chinese-decision-2b | BF16 | 84.11 | 77.18 | 0.64 | 0.4165 | 0.2133 | 0.5642 |
 | chinese-decision-2b-gguf | Q8_0 | 84.11 | 77.33 | 0.65 | 0.4163 | 0.2132 | 0.5637 |
-| chinese-decision-unified-2b | BF16 | 85.00 | 79.12 | 0.9† | — | — | — |
-| chinese-decision-4b | BF16 | 85.97 | 81.92 | 1.00 | 0.3706 | 0.1909 | **0.5253** |
-| chinese-decision-4b-gguf | Q8_0 | 85.99 | 81.95 | 0.96 | **0.3705** | **0.1907** | **0.5253** |
-| chinese-decision-unified-4b | BF16 | **86.86** | **83.85** | 1.0† | — | — | — |
+| chinese-decision-unified-2b | BF16 | 85.00 | 79.12 | 0.9† | 0.3881† | 0.2016† | 0.5508 |
+| chinese-decision-4b | BF16 | 85.97 | 81.92 | 1.00 | 0.3706 | 0.1909 | 0.5253 |
+| chinese-decision-4b-gguf | Q8_0 | 85.99 | 81.95 | 0.96 | 0.3705 | 0.1907 | 0.5253 |
+| chinese-decision-unified-4b | BF16 | **86.86** | **83.85** | 1.0† | **0.3483†** | **0.1799†** | **0.5144** |
 
 - **chinese-decision-unified-4b 准确率最高**：相对 chinese-decision-4b，Micro **+0.89**、Macro **+1.93**，法律 **+5.23**、通用 **+1.61**；T = 1 时两者整体 ECE 为 1.0% 和 1.3%。
 - **纯决策模型中 chinese-decision-4b 准确率最高**：相对 chinese-decision-2b，Micro **+1.86**、Macro **+4.75**、专业平均 **+5.76** 个百分点，法律 / 金融分别提升 **8.47 / 7.11**，NLL / Brier / Score MAE 分别下降 **11.0% / 10.5% / 6.9%**；整体 ECE 为 1.00%，高于 2B 的 0.64%。4B 与 2B 的训练数据、训练目标、全局 batch 和学习率相同，差别主要是基础模型规模。

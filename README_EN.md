@@ -177,7 +177,7 @@ Every answer also includes the full `probabilities` and a `confidence` value, wh
 
 Unless noted otherwise, results are for the released weights (LoRA merged into the base model) on **all 307,900 CJ-Bench decisions** (304,822 hard labels, 3,078 soft labels), with no filtering or truncation. ACC / ECE use hard labels only (15 equal-width bins); NLL / Brier include soft labels. Micro is weighted by items; Macro is the unweighted mean of the four domains. All values are percentages.
 
-> **About the temperature T**: probabilities are p = softmax(z / T), where z are the candidate-letter logits. Decision-only models use the default temperature in `decision_config.json`; the unified models' CJ-Bench results use **T = 1** (plain softmax, no calibration), and ECE values marked † are at T = 1. Temperature only changes how sharp the probabilities are and **never changes the chosen answer**, so ACC is directly comparable across the two settings and ECE is not. Results for training checkpoints (before merging, T = 1) are in [Training checkpoint evaluations](docs/TRAINING_HISTORY.md) (Chinese).
+> **About the temperature T**: probabilities are p = softmax(z / T), where z are the candidate-letter logits. Decision-only models use the default temperature in `decision_config.json`; the unified models' CJ-Bench results use **T = 1** (plain softmax, no calibration), and ECE, NLL and Brier values marked † are at T = 1 (score MAE is the error of the expected level and barely depends on the temperature, so it compares directly). Temperature only changes how sharp the probabilities are and **never changes the chosen answer**, so ACC is directly comparable across the two settings and ECE is not. Results for training checkpoints (before merging, T = 1) are in [Training checkpoint evaluations](docs/TRAINING_HISTORY.md) (Chinese).
 
 ### Main Results
 
@@ -187,13 +187,13 @@ Unless noted otherwise, results are for the released weights (LoRA merged into t
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | chinese-decision-0.8b | BF16 | 83.11 | 75.74 | **0.27** | 0.4313 | 0.2238 | 0.5844 |
 | chinese-decision-0.8b-gguf | Q8_0 | 83.12 | 75.81 | **0.27** | 0.4313 | 0.2238 | 0.5840 |
-| chinese-decision-unified-0.8b | BF16 | 83.46 | 76.17 | 1.1† | — | — | — |
+| chinese-decision-unified-0.8b | BF16 | 83.46 | 76.17 | 1.1† | 0.4243† | 0.2198† | 0.5786 |
 | chinese-decision-2b | BF16 | 84.11 | 77.18 | 0.64 | 0.4165 | 0.2133 | 0.5642 |
 | chinese-decision-2b-gguf | Q8_0 | 84.11 | 77.33 | 0.65 | 0.4163 | 0.2132 | 0.5637 |
-| chinese-decision-unified-2b | BF16 | 85.00 | 79.12 | 0.9† | — | — | — |
-| chinese-decision-4b | BF16 | 85.97 | 81.92 | 1.00 | 0.3706 | 0.1909 | **0.5253** |
-| chinese-decision-4b-gguf | Q8_0 | 85.99 | 81.95 | 0.96 | **0.3705** | **0.1907** | **0.5253** |
-| chinese-decision-unified-4b | BF16 | **86.86** | **83.85** | 1.0† | — | — | — |
+| chinese-decision-unified-2b | BF16 | 85.00 | 79.12 | 0.9† | 0.3881† | 0.2016† | 0.5508 |
+| chinese-decision-4b | BF16 | 85.97 | 81.92 | 1.00 | 0.3706 | 0.1909 | 0.5253 |
+| chinese-decision-4b-gguf | Q8_0 | 85.99 | 81.95 | 0.96 | 0.3705 | 0.1907 | 0.5253 |
+| chinese-decision-unified-4b | BF16 | **86.86** | **83.85** | 1.0† | **0.3483†** | **0.1799†** | **0.5144** |
 
 - **chinese-decision-unified-4b is the most accurate**: compared with chinese-decision-4b, Micro **+0.89**, Macro **+1.93**, legal **+5.23** and general **+1.61**; at T = 1 their overall ECE is 1.0% and 1.3%.
 - **Among decision-only models, chinese-decision-4b is the most accurate**: compared with chinese-decision-2b, Micro **+1.86**, Macro **+4.75** and the specialized average **+5.76** points, with legal / finance up **8.47 / 7.11**; NLL / Brier / score MAE drop by **11.0% / 10.5% / 6.9%**. Overall ECE is 1.00%, above 2B's 0.64%. 4B and 2B share training data, objective, global batch and learning rate, so the main difference is base-model size.

@@ -379,6 +379,8 @@ Studio 里的 39 条案例和两个流水线场景，逐条记录了成功和失
 | 金融 | 1.5 | 1.1 | 0.605 |
 | `noul` / `choice` / `score` | 0.4 / 1.5 / 2.4 | 0.7 / 1.3 / 2.3 | 0.121 / 0.565 / 0.978 |
 
+整体（T = 1）：分布 NLL（含软标签）0.4243、Brier 0.2198，`score` 题期望等级 MAE 0.5786；完整指标见 `cj_bench_report.json`。
+
 > 发布的 T = 1.1326 在 CJ-Dataset 的独立校准划分上拟合（1,984 条硬标签样本）。它在 CJ-Bench 上的整体指标没有重新跑，上面的 ECE 都是 T = 1。ACC 和 ECE 只在硬标签样本上计算。基线之外的对比（Jev、Chinese-Jev 等）见 [chinese-decision-0.8b 模型卡](MODEL_CARD_0_8B.md#cj-bench-测试集)，本模型相对 chinese-decision-0.8b 没有明显差别，不再重复。
 
 ### 决策：CJ-IE 测试集（抽取相关的分类任务）
