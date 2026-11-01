@@ -1,0 +1,2 @@
+{"state":"The sign is red.","questions":{"color":{"type":"choice","instructions":"What color is the sign?","criteria":{"red":"Red","blue":"Blue"}}},"_evaluation":{"run_id":"local-smoke:color","catalog_id":0,"dataset":"local-smoke-not-a-benchmark"}}
+{"state":"客户说：付款后一直没有收到发票，我已经催了三次，今天必须拿到。","questions":{"urgent":{"type":"noul","instructions":"客户是否表达了紧迫性？","criteria":{"false":"否","true":"是"}}},"_evaluation":{"run_id":"local-smoke:urgency","catalog_id":0,"dataset":"local-smoke-not-a-benchmark"}}
