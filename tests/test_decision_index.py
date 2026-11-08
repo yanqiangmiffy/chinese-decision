@@ -38,7 +38,7 @@ def engine():
     result.max_options, result.max_length = 26, 16384
     result.model_name = "test-decision"
     result.group_size, result.keep, result.seed = 16, 2, 0
-    result.batch_size, result.token_budget = 64, 65536
+    result.batch_size, result.token_budget, result.debias = 64, 65536, "none"
     # Logit = the candidate's number ("label-7" -> 7), so the largest label always wins.
     result.pipe = SimpleNamespace(processor=DecisionProcessor(Tokenizer(), DecisionConfig()), temperature=2.,
                                   candidate_logits=Mock(side_effect=lambda items, **kwargs: [
@@ -138,6 +138,33 @@ class DecisionIndexTests(unittest.TestCase):
         self.assertEqual(response["answers"]["q"]["choice"], "label-19")
         first = adapter.pipe.candidate_logits.call_args_list[0].args[0]
         self.assertTrue(all(len(item["input_ids"]) <= 1200 for item in first))
+
+    def test_reverse_order_cancels_a_position_preference(self):
+        adapter = engine()
+        # A model that only likes the last position: logit = position.
+        adapter.pipe.candidate_logits = Mock(side_effect=lambda items, **kwargs: [
+            [float(i) for i in range(len(item["options"]))] for item in items])
+        questions = {"pair": question(2), "four": question(4), "yes": {"type": "noul", "instructions": "Is it true?"}}
+        biased, _ = adapter("A state", questions)
+        self.assertEqual(biased["answers"]["pair"]["choice"], "label-1")
+        adapter.debias = "reverse"
+        fair, _ = adapter("A state", questions)
+        validate(questions, fair)
+        self.assertEqual(adapter.pipe.candidate_logits.call_count, 2)  # both orders in one batch
+        for name in ("pair", "four"):
+            values = list(fair["answers"][name]["probabilities"].values())
+            self.assertAlmostEqual(values[0], values[-1])
+        self.assertAlmostEqual(fair["answers"]["yes"]["noul"], .5)
+        shown = [item["options"] for item in adapter.pipe.candidate_logits.call_args.args[0]]
+        self.assertIn([("label-1", "Description 1"), ("label-0", "Description 0")], shown)
+
+    def test_reverse_order_keeps_an_order_free_model_unchanged(self):
+        plain, _ = engine()("A state", {"q": question(5)})
+        adapter = engine()
+        adapter.debias = "reverse"
+        both, _ = adapter("A state", {"q": question(5)})
+        for key, p in plain["answers"]["q"]["probabilities"].items():
+            self.assertAlmostEqual(both["answers"]["q"]["probabilities"][key], p)
 
     def test_spread_orders_rounds_and_sums_to_one(self):
         match = SimpleNamespace(criteria={k: k for k in "abcdef"}, rounds=[{"groups": [

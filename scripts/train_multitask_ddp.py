@@ -80,9 +80,9 @@ def parse_args(argv=None):
     parser.add_argument("--kl-weight", type=float, default=1.0, help="KL(start model || model) on replay batches")
     parser.add_argument("--cj-dev", default="", help="independent decision validation for checkpoint selection")
     parser.add_argument("--cj-calibration", default="", help="decision cases for the exported temperature")
-    parser.add_argument("--selection", choices=("retention", "joint"), default="retention",
+    parser.add_argument("--selection", choices=("retention", "joint", "last"), default="retention",
                         help="retention: best new-task score within --max-retention-drop of step 0; "
-                             "joint: best mean of CJ-dev accuracy and new-task score")
+                             "joint: best mean of CJ-dev accuracy and new-task score; last: the final checkpoint")
     parser.add_argument("--max-retention-drop", type=float, default=1.0,
                         help="largest CJ-dev accuracy drop (points) a selectable checkpoint may have")
     parser.add_argument("--export", default="model", help="exported model directory under --out ('' to skip)")
@@ -110,6 +110,8 @@ def parse_args(argv=None):
     parser.add_argument("--workers", type=int, default=6, help="DataLoader workers per rank")
     parser.add_argument("--length-procs", type=int, default=32)
     parser.add_argument("--limit", type=int, default=0, help="rows per file, for smoke tests")
+    parser.add_argument("--max-lines", nargs="*", default=[], metavar="TASK=N",
+                        help="train on N lines per file of a task (decision, replay, extraction), drawn uniformly with --seed")
     parser.add_argument("--grad-checkpointing", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args(argv)
@@ -156,21 +158,29 @@ class LineStore:
         self._handles, self._pid = {}, None
 
     @classmethod
-    def build(cls, paths, limit=0):
-        """Scan `paths` (at most `limit` lines per file when set)."""
-        files, offsets = array("h"), array("q")
+    def build(cls, paths, limit=0, sample=0, seed=0):
+        """Scan `paths`: the first `limit` lines per file when set, or `sample` lines per file drawn uniformly.
+
+        Sampled lines keep their file order; the draw depends only on `seed` and the file's line count.
+        """
+        files, offsets = [], []
         for number, path in enumerate(paths):
+            kept = array("q")
             with open(path, "rb") as stream:
-                position, kept = 0, 0
+                position = 0
                 for line in stream:
                     if line.strip():
-                        files.append(number)
-                        offsets.append(position)
-                        kept += 1
-                        if limit and kept >= limit:
+                        kept.append(position)
+                        if limit and len(kept) >= limit:
                             break
                     position += len(line)
-        return cls(paths, np.frombuffer(files, dtype=np.int16).copy(), np.frombuffer(offsets, dtype=np.int64).copy())
+            kept = np.frombuffer(kept, dtype=np.int64)
+            if sample and len(kept) > sample:
+                kept = kept[np.sort(np.random.default_rng([seed, number]).choice(len(kept), sample, replace=False))]
+            files.append(np.full(len(kept), number, dtype=np.int16))
+            offsets.append(kept)
+        return cls(paths, np.concatenate(files) if files else np.zeros(0, np.int16),
+                   np.concatenate(offsets) if offsets else np.zeros(0, np.int64))
 
     def save(self, prefix):
         np.save(f"{prefix}.files.npy", self.files)
@@ -203,6 +213,17 @@ class LineStore:
 
     def __setstate__(self, state):
         self.__init__(state["paths"], state["files"], state["offsets"])
+
+
+def max_lines(args):
+    """`--max-lines decision=N extraction=M` as {task: lines per file}."""
+    result = {}
+    for spec in args.max_lines:
+        task, _, count = spec.partition("=")
+        if task not in TASKS or not count.isdigit():
+            raise SystemExit(f"--max-lines takes TASK=N with TASK in {TASKS}, got {spec!r}")
+        result[task] = int(count)
+    return result
 
 
 def train_paths(args):
@@ -243,7 +264,9 @@ def _lengths(job):
 def build_data(args, directory):
     """Rank 0: index every training file and compute every token length; written as .npy files."""
     started = time.time()
-    stores = {task: LineStore.build(paths, args.limit) for task, paths in train_paths(args).items()}
+    sample = max_lines(args)
+    stores = {task: LineStore.build(paths, args.limit, sample.get(task, 0), args.seed)
+              for task, paths in train_paths(args).items()}
     for task, store in stores.items():
         store.save(directory / task)
     log("data_index", seconds=round(time.time() - started), **{task: len(store) for task, store in stores.items()})
@@ -274,6 +297,7 @@ def load_data(args, out, rank):
     directory = out / "data"
     marker = directory / "key.json"
     key = {"base": str(args.base), "limit": args.limit, "echo": args.echo, "max_span_units": args.max_span_units,
+           **({"max_lines": max_lines(args), "seed": args.seed} if args.max_lines else {}),
            "files": {task: [[str(Path(p).resolve()), Path(p).stat().st_size] for p in paths]
                      for task, paths in train_paths(args).items()}}
     if rank == 0:
@@ -467,11 +491,14 @@ def select(history, max_drop, mode="retention"):
 
     retention: best ie_score within the CJ-dev drop limit of step 0, else the smallest drop.
     joint: best mean of CJ-dev accuracy and ie_score (for a raw base, whose step 0 is no baseline to keep).
+    last: the final checkpoint, for controlled comparisons where every run is read at the same point.
     """
     base = history[0]["scores"]["cj_accuracy"]
     trained = [h for h in history if h["step"] > 0 and h.get("checkpoint")]
     if not trained:
         return None
+    if mode == "last":
+        return max(trained, key=lambda h: h["step"])
     if base is None:
         return max(trained, key=lambda h: h["scores"]["ie_score"])
     if mode == "joint":

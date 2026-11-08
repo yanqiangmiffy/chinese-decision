@@ -2,6 +2,10 @@
 
 Launch with `torchrun --nproc_per_node=N` for N GPUs, or plain `python` for one GPU.
 The defaults reproduce the released run; `--resume` continues `--out` exactly.
+
+`--readout pointer` trains a new pointer head with the adapter (no 26-candidate limit; see
+docs/CANDIDATE_READOUT_SURVEY.md). `--prepared-data` / `--data` take several corpora (for example a
+decision mix and CJ), `--domains` picks their domains and `--domain-fraction` subsamples one.
 """
 import argparse
 import contextlib
@@ -22,7 +26,8 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from decision.data.batching import token_batches
-from decision.data.cj import DOMAINS, FULL_TRAIN_DECISIONS, prepared_examples, validation_items
+from decision.configuration import POINTER_PROMPT_VERSION, PointerConfig
+from decision.data.cj import DOMAINS, FULL_TRAIN_DECISIONS, prepared_examples, prepared_strata, validation_items
 from decision.modeling import DecisionModel
 from decision.processing import MAX_LENGTH, PROMPT_VERSION, DecisionProcessor
 from decision.training.common import evaluate_decisions, replace_directory, with_last
@@ -35,14 +40,24 @@ TRAINING_ALGORITHM = "ddp-record-mean-v2-shapes64"
 RESUME_IGNORED = {"resume", "log_every", "world_size", "keep_every"}
 # Recorded only when --rlcd is on, so cross-entropy-only runs keep their original config.
 RLCD_ARGS = ("rlcd", "rlcd_group_size", "rlcd_sigma_start", "rlcd_sigma_end")
+# Recorded only when they differ from these defaults, so earlier runs keep their original config.
+OPTIONAL_DEFAULTS = {"readout": "letters", "pointer_dim": 256, "head_lr": 1e-3,
+                     "domain_fraction": [], "val_per_source": 0, "select_metric": "distribution_nll",
+                     "init_adapter": None}
 VALIDATION_BATCH_SIZE, VALIDATION_TOKEN_BUDGET = 32, 16384
 
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", default="models/Qwen3.5-0.8B")
-    parser.add_argument("--data", default="datasets/CJ-Dataset")
-    parser.add_argument("--prepared-data", default="datasets/CJ-mixed")
+    parser.add_argument("--data", nargs="+", default=["datasets/CJ-Dataset"], help="corpora with validation splits")
+    parser.add_argument("--prepared-data", nargs="+", default=["datasets/CJ-mixed"])
+    parser.add_argument("--domains", nargs="+", default=list(DOMAINS))
+    parser.add_argument("--domain-fraction", nargs="*", default=[], metavar="DOMAIN[:KIND]=F",
+                        help="train on the first fraction F of each shard of DOMAIN (or of its KIND questions)")
+    parser.add_argument("--readout", choices=("letters", "pointer"), default="letters")
+    parser.add_argument("--pointer-dim", type=int, default=256)
+    parser.add_argument("--head-lr", type=float, default=1e-3, help="pointer head learning rate")
     parser.add_argument("--out", default="runs/cj-ddp")
     parser.add_argument("--global-batch-size", type=int, default=1024)
     parser.add_argument("--token-budget", type=int, default=262144, help="global padded-token budget, shared across GPUs")
@@ -52,6 +67,10 @@ def parse_args(argv=None):
     parser.add_argument("--max-steps", type=int, default=0)
     parser.add_argument("--debug-examples", type=int, default=0)
     parser.add_argument("--val-per-stratum", type=int, default=100)
+    parser.add_argument("--val-per-source", type=int, default=0,
+                        help="also validate up to N items of every source (0 = only per domain/type)")
+    parser.add_argument("--select-metric", choices=("distribution_nll", "source_accuracy"), default="distribution_nll",
+                        help="what best/ minimizes: overall NLL, or minus the mean accuracy over sources")
     parser.add_argument("--eval-every", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=200)
     parser.add_argument("--keep-every", type=int, default=1000,
@@ -61,6 +80,8 @@ def parse_args(argv=None):
     parser.add_argument("--lora-r", type=int, default=32)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--init-adapter", default=None,
+                        help="start from this checkpoint's LoRA adapter and pointer head (fine-tuning a finished run)")
     rlcd = parser.add_argument_group("RLCD", "optional policy-gradient term over a proper-scoring-rule reward "
                                              "(Chinese-Jev); off by default")
     rlcd.add_argument("--rlcd", action="store_true", help="add the RLCD term to the distribution cross-entropy")
@@ -70,13 +91,47 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if args.rlcd and (args.rlcd_group_size < 2 or min(args.rlcd_sigma_start, args.rlcd_sigma_end) <= 0):
         parser.error("--rlcd needs --rlcd-group-size >= 2 and positive sigmas")
+    try:
+        args.fractions = {k: float(v) for k, v in (x.split("=", 1) for x in args.domain_fraction)}
+    except ValueError:
+        parser.error("--domain-fraction takes DOMAIN=F or DOMAIN:KIND=F")
+    if any(not 0 < f <= 1 for f in args.fractions.values()):
+        parser.error("--domain-fraction values must be in (0, 1]")
     return args
 
 
-def run_config(args, world_size, data_revision):
-    config = vars(args) | {"world_size": world_size, "domains": list(DOMAINS), "prompt_version": PROMPT_VERSION,
-                           "batch_size": args.global_batch_size, "training_algorithm": TRAINING_ALGORITHM,
-                           "data_revision": data_revision}
+def selection_score(metrics, metric, min_n=10):
+    """The value best/ minimizes: overall NLL, or minus the mean accuracy over sources with >= min_n items
+    (a collapse on one source then lowers the score instead of hiding in the average)."""
+    if metric == "distribution_nll":
+        return metrics["all"]["distribution_nll"]
+    # Sub-sources (tasksource/<dataset>, ragtruth/<task>) are pooled into their source first, weighted by
+    # their hard items, so the 260 tasksource datasets count once and a collapse on ESCI is 1 of ~90 sources.
+    pooled = {}
+    for key, m in metrics.items():
+        if key.startswith("source:") and isinstance(m.get("accuracy"), (int, float)) and m.get("hard_n", m.get("n")):
+            name = key[len("source:"):].split("/")[0]
+            hits, n = pooled.get(name, (0.0, 0))
+            weight = m.get("hard_n", m.get("n"))
+            pooled[name] = (hits + m["accuracy"] * weight, n + weight)
+    accuracies = [hits / n for hits, n in pooled.values() if n >= min_n]   # soft-label-only sources have none
+    return -sum(accuracies) / len(accuracies) if accuracies else -metrics["all"]["accuracy"]
+
+
+def run_config(args, world_size, data_revision, prompt_version=PROMPT_VERSION):
+    config = {k: v for k, v in vars(args).items() if k != "fractions"}
+    config |= {"world_size": world_size, "domains": list(args.domains), "prompt_version": prompt_version,
+               "batch_size": args.global_batch_size, "training_algorithm": TRAINING_ALGORITHM,
+               "data_revision": data_revision}
+    # Single corpora are stored as strings, as earlier runs recorded them.
+    for key in ("data", "prepared_data"):
+        if len(config[key]) == 1:
+            config[key] = config[key][0]
+    for key, default in OPTIONAL_DEFAULTS.items():
+        if config.get(key) == default:
+            config.pop(key, None)
+    if args.readout == "pointer":
+        config["training_algorithm"] += "+pointer"
     if args.rlcd:
         config["training_algorithm"] += "+rlcd"
     else:
@@ -111,10 +166,19 @@ def main():
     torch.manual_seed(args.seed + rank)
     random.seed(args.seed + rank)
     out = Path(args.out)
-    manifest = json.loads((Path(args.prepared_data) / "manifest.json").read_text())
-    if manifest["validation_included"] or manifest["decisions"] != FULL_TRAIN_DECISIONS:
+    manifests = [json.loads((Path(root) / "manifest.json").read_text()) for root in args.prepared_data]
+    if any(m["validation_included"] for m in manifests):
         raise ValueError("unexpected prepared corpus")
-    config = run_config(args, world, manifest["source_revision"])
+    cj_only = args.prepared_data == ["datasets/CJ-mixed"] and args.domains == list(DOMAINS) and not args.fractions
+    if cj_only and manifests[0]["decisions"] != FULL_TRAIN_DECISIONS:
+        raise ValueError("unexpected prepared corpus")
+    strata = prepared_strata(args.prepared_data, args.domains, args.fractions)
+    if {entry["domain"] for entry in strata} != set(args.domains):
+        raise ValueError(f"prepared corpora lack domains {sorted(set(args.domains) - {e['domain'] for e in strata})}")
+    revisions = [m.get("source_revision") for m in manifests]
+    pointer = args.readout == "pointer"
+    config = run_config(args, world, revisions[0] if len(revisions) == 1 else revisions,
+                        POINTER_PROMPT_VERSION if pointer else PROMPT_VERSION)
     if rank == 0:
         out.mkdir(parents=True, exist_ok=True)
         cfg = out / "config.json"
@@ -129,33 +193,49 @@ def main():
     dist.barrier()
     processor = DecisionProcessor.from_pretrained(args.base)
     processor.config.max_length = args.max_length
+    if pointer:
+        # Prompts only need the marker; the head's hidden size is filled in once the backbone is loaded.
+        processor.config.pointer = PointerConfig(hidden_size=0, dim=args.pointer_dim)
     tokenizer = processor.tokenizer
-    letters = torch.tensor(processor.letter_ids, device=device)
+    letters = None if pointer else torch.tensor(processor.letter_ids, device=device)
     val_path = out / "validation_tokens.pt"
     if rank == 0 and not val_path.exists():
-        val, audit = validation_items(args.data, DOMAINS, processor, args.val_per_stratum, seed=args.seed)
+        val, audit = validation_items(args.data, args.domains, processor, args.val_per_stratum, seed=args.seed,
+                                      per_source=args.val_per_source)
         torch.save(val, val_path)
         (out / "validation_sampling.json").write_text(json.dumps(audit, indent=2))
     dist.barrier()
     val = torch.load(val_path, weights_only=False)
-    decision_model = DecisionModel.from_pretrained(args.base, adapter=out / "last" if args.resume else None,
-                                                   trainable=args.resume, device=device)
+    adapter = out / "last" if args.resume else args.init_adapter
+    decision_model = DecisionModel.from_pretrained(args.base, adapter=adapter, trainable=bool(adapter), device=device)
+    if pointer and decision_model.pointer_head is None:
+        torch.manual_seed(args.seed)                       # the same initial head on every rank
+        decision_model.add_pointer_head(args.pointer_dim)
+        torch.manual_seed(args.seed + rank)
+    if pointer:
+        processor.config.pointer = decision_model.config.pointer
     if rank == 0 and not args.resume:
         metrics, _ = evaluate_decisions(decision_model, processor, val, VALIDATION_BATCH_SIZE, VALIDATION_TOKEN_BUDGET)
         (out / "baseline.json").write_text(json.dumps(metrics, indent=2))
         log("baseline", metrics=metrics["all"], validation_n=len(val))
     dist.barrier()
-    if not args.resume:
+    if not adapter:
         decision_model.enable_lora(r=args.lora_r)
     core = decision_model.backbone
     core.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     core.enable_input_require_grads()
-    model = DDP(core, device_ids=[local_rank], output_device=local_rank, gradient_as_bucket_view=True,
-                broadcast_buffers=False, bucket_cap_mb=25)
+    # The pointer readout runs the head inside DecisionModel.forward, so DDP wraps the whole model and
+    # synchronizes the head with the adapter; the letter readout wraps the backbone as before.
+    model = DDP(decision_model if pointer else core, device_ids=[local_rank], output_device=local_rank,
+                gradient_as_bucket_view=True, broadcast_buffers=False, bucket_cap_mb=25)
     # from_pretrained starts in eval mode; every rank must enable checkpointing's
     # training path, including ranks which did not run the baseline evaluation.
     model.train()
-    optimizer = torch.optim.AdamW([x for x in core.parameters() if x.requires_grad], lr=args.lr)
+    groups = [{"params": [x for x in core.parameters() if x.requires_grad], "base_lr": args.lr}]
+    if pointer:
+        groups.append({"params": list(decision_model.pointer_head.parameters()), "base_lr": args.head_lr})
+    trainable = [x for group in groups for x in group["params"]]
+    optimizer = torch.optim.AdamW([dict(group, lr=group["base_lr"]) for group in groups])
     step, examples_seen, start_epoch, skip_batches, best, stats = 0, 0, 0, 0, float("inf"), Counter()
     resume_checkpoint_pending = args.resume
     if args.resume:
@@ -185,7 +265,7 @@ def main():
                 previous_world_size=previous_world, world_size=world)
         del state
     dist.barrier()
-    total = args.debug_examples or manifest["decisions"]
+    total = args.debug_examples or sum(entry["decisions"] for entry in strata)
     if rank == 0:
         log("training_start", nominal_decisions=total, world_size=world, global_batch_size=args.global_batch_size,
             global_token_budget=args.token_budget, config=config)
@@ -203,6 +283,8 @@ def main():
             temporary.mkdir(exist_ok=True)
             core.save_pretrained(temporary)
             tokenizer.save_pretrained(temporary)
+            if pointer:
+                decision_model.save_pointer_head(temporary / "pointer_head.pt")
             torch.save({"optimizer": optimizer.state_dict(), "step": step, "examples_seen": examples_seen,
                         "world_size": world,
                         "epoch": epoch, "batches_done": batches_done, "best": best,
@@ -225,17 +307,22 @@ def main():
         if rank == 0:
             metrics, _ = evaluate_decisions(decision_model, processor, val, VALIDATION_BATCH_SIZE,
                                             VALIDATION_TOKEN_BUDGET)
-            log("validation", step=step, metrics=metrics["all"])
+            selection = selection_score(metrics, args.select_metric)
+            log("validation", step=step, metrics=metrics["all"], selection={args.select_metric: selection})
             (out / "latest_metrics.json").write_text(json.dumps(metrics, indent=2))
-            score = metrics["all"]["distribution_nll"]
+            with open(out / "metrics_history.jsonl", "a", encoding="utf-8") as history:   # every validation, all groups
+                history.write(json.dumps({"step": step, "metrics": metrics}) + "\n")
+            score = selection
             if score < best:
                 best = score
                 temporary = out / "best.next"
                 temporary.mkdir(exist_ok=True)
                 core.save_pretrained(temporary)
                 tokenizer.save_pretrained(temporary)
+                if pointer:
+                    decision_model.save_pointer_head(temporary / "pointer_head.pt")
                 (temporary / "metrics.json").write_text(json.dumps(metrics, indent=2))
-                (temporary / "selection.json").write_text(json.dumps({"step": step, "metric": "distribution_nll", "value": best}))
+                (temporary / "selection.json").write_text(json.dumps({"step": step, "metric": args.select_metric, "value": best}))
                 replace_directory(temporary, out / "best")
         best_tensor = torch.tensor(best, dtype=torch.float64, device=device)
         dist.broadcast(best_tensor, 0)
@@ -247,7 +334,8 @@ def main():
         if done:
             break
         last_stream_stats = Counter()
-        stream = prepared_examples(args.prepared_data, DOMAINS, args.seed + epoch, last_stream_stats)
+        stream = prepared_examples(args.prepared_data, args.domains, args.seed + epoch, last_stream_stats,
+                                   fractions=args.fractions, max_options=processor.max_options, requests=pointer)
         if args.debug_examples:
             stream = itertools.islice(stream, args.debug_examples)
         batches = token_batches(stream, processor, args.global_batch_size, args.token_budget, args.seed + epoch,
@@ -262,7 +350,7 @@ def main():
             fraction = step / args.max_steps if args.max_steps else examples_seen / (total * args.epochs)
             scale = min(1., (step + 1) / 100) * (.1 + .45 * (1 + math.cos(math.pi * min(fraction, 1.))))
             for group in optimizer.param_groups:
-                group["lr"] = args.lr * scale
+                group["lr"] = group["base_lr"] * scale
             local_batch = global_batch[rank::world]
             real_count = len(local_batch)
             if not local_batch:
@@ -273,13 +361,15 @@ def main():
                 logits, targets = decision_model.score_decisions(local_batch, processor, letters, forward=model)
                 if args.rlcd:
                     sigma = linear_schedule(args.rlcd_sigma_start, args.rlcd_sigma_end, fraction)
-                    sizes = torch.tensor([len(e["target"]) for e in local_batch], device=device)
+                    # One row per question: a joint pointer item has several.
+                    rows = processor.question_targets(local_batch)
+                    sizes = torch.tensor([len(target) for target, _ in rows], device=device)
                     mask = torch.arange(logits.shape[-1], device=device)[None, :] < sizes[:, None]
-                    ordinal = torch.tensor([e["kind"] == "score" for e in local_batch], device=device)
-                    out = rlcd(logits, targets, mask, ordinal, sigma=sigma)
-                    for i, value in enumerate((out.ce, out.rlcd, out.reward)):
+                    ordinal = torch.tensor([kind == "score" for _, kind in rows], device=device)
+                    result = rlcd(logits, targets, mask, ordinal, sigma=sigma)
+                    for i, value in enumerate((result.ce, result.rlcd, result.reward)):
                         recent_rlcd[i] += value.item() * real_count
-                    loss = out.loss
+                    loss = result.loss
                 else:
                     # Hard labels are one-hot special cases of the same distribution cross-entropy.
                     loss = -(targets * logits.log_softmax(-1)).sum(-1).mean()
@@ -295,10 +385,10 @@ def main():
                 stats["trained:" + example["domain"] + ":" + example["kind"]] += 1
             if not will_step:
                 continue
-            for parameter in core.parameters():
+            for parameter in trainable:
                 if parameter.grad is not None:
                     parameter.grad.mul_(args.global_batch_size / accumulated)
-            grad_norm = torch.nn.utils.clip_grad_norm_(core.parameters(), 1.)
+            grad_norm = torch.nn.utils.clip_grad_norm_(trainable, 1.)
             if not torch.isfinite(grad_norm):
                 raise FloatingPointError("non-finite distributed gradients")
             optimizer.step()
@@ -339,6 +429,8 @@ def main():
     if rank == 0:
         core.save_pretrained(out / "final")
         tokenizer.save_pretrained(out / "final")
+        if pointer:
+            decision_model.save_pointer_head(out / "final" / "pointer_head.pt")
         (out / "progress.json").write_text(json.dumps({"status": "completed", "step": step, "examples_seen": examples_seen,
                                                        "stats": dict(stats), "reader_stats": dict(last_stream_stats)}, indent=2))
         log("completed", step=step, examples_seen=examples_seen)

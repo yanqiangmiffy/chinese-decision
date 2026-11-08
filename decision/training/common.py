@@ -46,7 +46,7 @@ def fit_temperature(rows):
     hard = [row for row in rows if row["hard"]]
     if not hard:
         raise ValueError("no hard calibration targets")
-    logits = torch.full((len(hard), len(LETTERS)), -1e4)
+    logits = torch.full((len(hard), max(len(LETTERS), max(len(row["logits"]) for row in hard))), -1e4)
     labels = torch.tensor([max(range(len(row["target"])), key=row["target"].__getitem__) for row in hard])
     for i, row in enumerate(hard):
         logits[i, :len(row["logits"])] = torch.tensor(row["logits"])

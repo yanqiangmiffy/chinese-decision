@@ -38,12 +38,13 @@ class TransformersBackend:
         self.device = str(self.model.device)
         self.max_length = None
 
-    def logits(self, ids, count):
+    def logits(self, ids, count, pointer=None):
+        """Candidate logits of one compiled question; `pointer` is its encoded pointer input (pointer models)."""
         import torch
 
+        item = {**(pointer or {}), "input_ids": ids, "target": [0.] * count}
         with torch.inference_mode():
-            values, _ = self.model.score_decisions([{"input_ids": ids, "target": [0.] * count}], self.processor,
-                                                   self.letters)
+            values, _ = self.model.score_decisions([item], self.processor, self.letters)
         return values[0, :count].cpu().tolist()
 
     def close(self):

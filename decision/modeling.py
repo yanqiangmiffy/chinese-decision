@@ -1,7 +1,14 @@
 """`DecisionModel`: one backbone, two readouts, one weight file.
 
-    decision    the backbone's next-token logits over the candidate letters at the last position
+    decision    the backbone's next-token logits over the candidate letters at the last position, or,
+                with a pointer head, each candidate marker's state scored against the last position
     extraction  `SpanHead` over the last hidden states: each candidate span chooses [none, type_1..type_M]
+
+The pointer head (`PointerHead`) follows the pointer readouts of decision models on the Decision
+Index board (Verdin's "scores each option's end token against the decide token"): a question is
+bounded by the context window, not by a label alphabet. A request's questions share one sequence
+(one decide marker each), and in the full-attention layers the prompt is read bidirectionally
+(`prompt_masks`), as several leading board models do. See docs/CANDIDATE_READOUT_SURVEY.md.
 
 The span head follows CalOn's typed span decisions (extraordinarylab/calon, arXiv 2610.17113): span
 vectors from first/last/next/mean token states and a width embedding, type vectors pooled from the
@@ -11,7 +18,7 @@ not copied here.
 On disk a model is a standard causal-LM directory (llama.cpp, vLLM and `AutoModelForCausalLM` read
 it as usual) whose safetensors may also hold `span_head.*`, described in `decision_config.json`:
 
-    model.safetensors       backbone (+ span_head.* tensors)
+    model.safetensors       backbone (+ span_head.* and pointer_head.* tensors)
     config.json             backbone config
     decision_config.json    temperature, prompt version, and the span head's settings
     tokenizer files
@@ -25,12 +32,14 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from .configuration import DecisionConfig, ExtractionConfig
+from .configuration import POINTER_MAX_OPTIONS, POINTER_PROMPT_VERSION, DecisionConfig, ExtractionConfig, PointerConfig
 from .data.batching import greedy_batches
 from .processing import PAD_MULTIPLE
 from .utils import resolve_pretrained
 
 SPAN_PREFIX = "span_head."
+POINTER_PREFIX = "pointer_head."
+INVALID = -1e4
 
 
 def mlp(d_in, hidden, d_out, dropout):
@@ -75,6 +84,70 @@ class SpanHead(nn.Module):
         return torch.cat([none, utilities], 1)
 
 
+def prompt_masks(attention_mask, span_start, span_end, bidirectional=True):
+    """Per-layer-type masks for Qwen3.5's text model (`attention_mask` may be such a dict).
+
+    full_attention: boolean `[B, 1, T, T]`, True = attend. Causal, plus every pair of tokens inside a
+    row's `[span_start, span_end)` (the prompt), never a padded key; a padded query attends to itself
+    so its softmax stays finite. linear_attention: the 2D padding mask (None without padding), the
+    recurrent layers stay causal.
+    """
+    valid = attention_mask.bool()
+    width = valid.shape[1]
+    position = torch.arange(width, device=valid.device)
+    allowed = (position[None, :, None] >= position[None, None, :]).expand(valid.shape[0], -1, -1)
+    if bidirectional:
+        inside = (position[None, :] >= span_start[:, None]) & (position[None, :] < span_end[:, None])
+        allowed = allowed | (inside[:, :, None] & inside[:, None, :])
+    allowed = (allowed & valid[:, None, :]) | torch.eye(width, dtype=torch.bool, device=valid.device)[None]
+    return {"full_attention": allowed[:, None], "linear_attention": None if valid.all() else attention_mask}
+
+
+class PointerHead(nn.Module):
+    """Candidate logits: each candidate marker's state against its question's decide marker, in float32.
+
+        logit_k = <W_c norm(h_k), W_q norm(h_decide)> / sqrt(dim) + <w, W_c norm(h_k)>
+
+    The decide marker follows its question's candidates, so the bilinear term compares them; the
+    linear term is a per-candidate prior. The output is invariant to how many candidates there are.
+    """
+
+    def __init__(self, hidden_size, dim=256):
+        super().__init__()
+        self.config = dict(hidden_size=hidden_size, dim=dim)
+        self.norm = nn.LayerNorm(hidden_size)
+        self.query = nn.Linear(hidden_size, dim)
+        self.key = nn.Linear(hidden_size, dim)
+        self.prior = nn.Linear(dim, 1)
+        self.scale = dim ** -0.5
+
+    def forward(self, hidden, positions):
+        """`hidden` [B, T, D]; `positions` from `DecisionProcessor.pad_pointer`. Returns `[Q, K]` (INVALID padding)."""
+        hidden = hidden.float()
+        query = self.query(self.norm(hidden[positions["decide_row"], positions["decide_col"]]))       # [Q, d]
+        keys = self.key(self.norm(hidden[positions["mark_row"], positions["mark_col"]]))              # [N, d]
+        questions, slots = positions["mark_question"], positions["mark_slot"]
+        scores = (keys * query[questions]).sum(-1) * self.scale + self.prior(keys).squeeze(-1)
+        width = int(slots.max().item()) + 1 if slots.numel() else 1
+        logits = scores.new_full((query.shape[0], width), INVALID)
+        return logits.index_put((questions, slots), scores)
+
+
+def read_head(path, prefix, head):
+    """Load the `prefix`-named tensors of a model directory's safetensors into `head`."""
+    from safetensors import safe_open
+    tensors = {}
+    for file in sorted(Path(path).glob("*.safetensors")):
+        with safe_open(str(file), framework="pt", device="cpu") as stream:
+            for key in stream.keys():
+                if key.startswith(prefix):
+                    tensors[key[len(prefix):]] = stream.get_tensor(key)
+    if not tensors:
+        raise ValueError(f"{path}: decision_config.json describes {prefix.rstrip('.')} but no {prefix}* tensors were found")
+    head.load_state_dict(tensors)
+    return head
+
+
 def load_backbone(path, device="cuda", dtype=None, ignore_span_head=False):
     """The causal LM of `path` (the text backbone of a multimodal Qwen3.5 checkpoint), in eval mode."""
     from transformers import AutoConfig, AutoModelForCausalLM
@@ -85,7 +158,7 @@ def load_backbone(path, device="cuda", dtype=None, ignore_span_head=False):
         model_class = AutoModelForCausalLM._model_mapping[type(AutoConfig.from_pretrained(str(path),
                                                                                         local_files_only=True))]
         previous = model_class._keys_to_ignore_on_load_unexpected
-        model_class._keys_to_ignore_on_load_unexpected = list(previous or []) + [r"^span_head\."]
+        model_class._keys_to_ignore_on_load_unexpected = list(previous or []) + [r"^span_head\.", r"^pointer_head\."]
     try:
         model = AutoModelForCausalLM.from_pretrained(str(path), dtype=dtype, attn_implementation="sdpa",
                                                      local_files_only=True)
@@ -98,18 +171,12 @@ def load_backbone(path, device="cuda", dtype=None, ignore_span_head=False):
 
 def read_span_head(path, config, device):
     """The span head stored in a model directory's safetensors."""
-    from safetensors import safe_open
-    tensors = {}
-    for file in sorted(Path(path).glob("*.safetensors")):
-        with safe_open(str(file), framework="pt", device="cpu") as stream:
-            for key in stream.keys():
-                if key.startswith(SPAN_PREFIX):
-                    tensors[key[len(SPAN_PREFIX):]] = stream.get_tensor(key)
-    if not tensors:
-        raise ValueError(f"{path}: decision_config.json describes a span head but no span_head.* tensors were found")
-    head = SpanHead(**config.head_kwargs())
-    head.load_state_dict(tensors)
-    return head.to(device).eval()
+    return read_head(path, SPAN_PREFIX, SpanHead(**config.head_kwargs())).to(device).eval()
+
+
+def read_pointer_head(path, config, device):
+    """The pointer head stored in a model directory's safetensors."""
+    return read_head(path, POINTER_PREFIX, PointerHead(config.hidden_size, config.dim)).to(device).eval()
 
 
 class DecisionModel(nn.Module):
@@ -122,11 +189,12 @@ class DecisionModel(nn.Module):
         model.save_pretrained("out/")                                               # one directory, one weight file
     """
 
-    def __init__(self, backbone, config=None, span_head=None):
+    def __init__(self, backbone, config=None, span_head=None, pointer_head=None):
         super().__init__()
         self.backbone = backbone
         self.config = config or DecisionConfig()
         self.span_head = span_head
+        self.pointer_head = pointer_head
 
     @classmethod
     def from_pretrained(cls, name_or_path, *, adapter=None, trainable=False, device="cuda", dtype=None,
@@ -134,12 +202,16 @@ class DecisionModel(nn.Module):
         """Load a released decision model, a unified model, or a raw base; `adapter` adds a PEFT adapter on top."""
         path = resolve_pretrained(name_or_path, revision)
         config = DecisionConfig.from_pretrained(path)
-        backbone = load_backbone(path, device, dtype, ignore_span_head=config.can_extract)
+        backbone = load_backbone(path, device, dtype, ignore_span_head=config.can_extract or config.pointer is not None)
         if adapter:
             from peft import PeftModel
             backbone = PeftModel.from_pretrained(backbone, str(adapter), is_trainable=trainable)
         head = read_span_head(path, config.extraction, device) if config.can_extract else None
-        return cls(backbone, config, head)
+        pointer = read_pointer_head(path, config.pointer, device) if config.pointer is not None else None
+        model = cls(backbone, config, head, pointer)
+        if adapter and (Path(adapter) / "pointer_head.pt").exists():
+            model.load_pointer_head(Path(adapter) / "pointer_head.pt", trainable)
+        return model
 
     # structure
 
@@ -166,6 +238,29 @@ class DecisionModel(nn.Module):
         self.span_head = SpanHead(**extraction.head_kwargs()).to(self.device)
         self.config.extraction = extraction
         return self.span_head
+
+    def add_pointer_head(self, dim=256, marker=None):
+        """A new, randomly initialized pointer head; decisions are read from candidate markers from now on."""
+        pointer = PointerConfig(hidden_size=self.hidden_size, dim=dim, **({"marker": marker} if marker else {}))
+        self.pointer_head = PointerHead(pointer.hidden_size, pointer.dim).to(self.device)
+        self.config.pointer = pointer
+        self.config.prompt_version = POINTER_PROMPT_VERSION
+        self.config.max_options = POINTER_MAX_OPTIONS
+        return self.pointer_head
+
+    def save_pointer_head(self, path):
+        """A training checkpoint's pointer head (`pointer_head.pt`: state_dict and config)."""
+        torch.save({"state_dict": self.pointer_head.state_dict(), "config": self.config.pointer.to_dict()}, path)
+
+    def load_pointer_head(self, path, trainable=False):
+        state = torch.load(path, map_location=self.device)
+        self.config.pointer = PointerConfig.from_dict(state["config"])
+        self.config.prompt_version = POINTER_PROMPT_VERSION
+        self.config.max_options = POINTER_MAX_OPTIONS
+        self.pointer_head = PointerHead(self.config.pointer.hidden_size, self.config.pointer.dim).to(self.device)
+        self.pointer_head.load_state_dict(state["state_dict"])
+        self.pointer_head.train(trainable)
+        return self.pointer_head
 
     def load_span_head(self, path):
         """A span head saved by a training run (`span_head.pt`: state_dict, config, none_shift, echo)."""
@@ -207,22 +302,47 @@ class DecisionModel(nn.Module):
         return output.logits[:, -1, letter_ids].float()
 
     def letter_tensor(self, processor):
-        """The candidate letters' token ids on the model's device."""
+        """The candidate letters' token ids on the model's device (None for the pointer readout)."""
+        if self.pointer_head is not None:
+            return None
         return torch.tensor(processor.letter_ids, device=self.device)
 
+    def forward(self, input_ids, attention_mask, span_start, span_end, **positions):
+        """Pointer logits `[Q, K]`, one row per question, of a `DecisionProcessor.pad_pointer` batch.
+
+        The backbone and the pointer head run here, so a DistributedDataParallel wrapper around this
+        module synchronizes the adapter's and the head's gradients together.
+        """
+        masks = prompt_masks(attention_mask, span_start, span_end, self.config.pointer.bidirectional)
+        hidden = self.hidden_states(input_ids, masks)
+        return self.pointer_head(hidden, positions)
+
     def score_decisions(self, items, processor, letter_ids=None, forward=None):
-        """Logits (invalid candidates at -1e4) and target distributions for encoded decisions."""
-        letters = letter_ids if letter_ids is not None else self.letter_tensor(processor)
-        inputs = processor.pad_decisions(items, self.device)
-        logits = self.decision_logits(inputs["input_ids"], inputs["attention_mask"], letters, forward)
-        sizes = torch.tensor([len(e["target"]) for e in items], device=self.device)
-        valid = torch.arange(len(letters), device=self.device)[None, :] < sizes[:, None]
-        targets = torch.tensor([e["target"] + [0.] * (len(letters) - len(e["target"])) for e in items],
-                               device=self.device)
-        return logits.masked_fill(~valid, -1e4), targets
+        """Logits (invalid candidates at -1e4) and target distributions for encoded decisions.
+
+        For the pointer readout `letter_ids` is ignored and `forward` replaces `self` (e.g. a DDP wrapper
+        around this model); for the letter readout `forward` replaces the backbone.
+        """
+        if self.pointer_head is not None:
+            # One row per question; a joint item contributes one row for each of its questions.
+            inputs = processor.pad_pointer(items, self.device)
+            logits = (forward or self)(**inputs).float()
+            targets = [target for target, _ in processor.question_targets(items)]
+            width = max(logits.shape[1], max(len(target) for target in targets))
+        else:
+            letters = letter_ids if letter_ids is not None else self.letter_tensor(processor)
+            inputs = processor.pad_decisions(items, self.device)
+            logits = self.decision_logits(inputs["input_ids"], inputs["attention_mask"], letters, forward)
+            targets, width = [e["target"] for e in items], len(letters)
+        if logits.shape[1] < width:
+            logits = torch.cat([logits, logits.new_full((logits.shape[0], width - logits.shape[1]), INVALID)], 1)
+        sizes = torch.tensor([len(target) for target in targets], device=self.device)
+        valid = torch.arange(width, device=self.device)[None, :] < sizes[:, None]
+        targets = torch.tensor([target + [0.] * (width - len(target)) for target in targets], device=self.device)
+        return logits.masked_fill(~valid, INVALID), targets
 
     def hidden_states(self, input_ids, attention_mask):
-        """Last-layer hidden states, without the LM head."""
+        """Last-layer hidden states, without the LM head; `attention_mask` may be a `prompt_masks` dict."""
         return self.base_model.get_decoder()(input_ids=input_ids, attention_mask=attention_mask,
                                              use_cache=False).last_hidden_state
 
@@ -241,6 +361,8 @@ class DecisionModel(nn.Module):
         """
         if self.span_head is None:
             raise ValueError("this model has no span head; it answers decisions only")
+        if self.pointer_head is not None:
+            raise NotImplementedError("joint decision/extraction passes read letters; pointer models score them separately")
         letters = letter_ids if letter_ids is not None else self.letter_tensor(processor)
         longest = max(len(item["input_ids"]) for item in [*decisions, *rows])
         width = -(-longest // PAD_MULTIPLE) * PAD_MULTIPLE if len(decisions) + len(rows) > 1 else longest
@@ -309,6 +431,8 @@ class DecisionModel(nn.Module):
         state = dict(self.backbone.state_dict())
         if self.span_head is not None:
             state.update({SPAN_PREFIX + k: v.detach().contiguous() for k, v in self.span_head.state_dict().items()})
+        if self.pointer_head is not None:
+            state.update({POINTER_PREFIX + k: v.detach().contiguous() for k, v in self.pointer_head.state_dict().items()})
         self.backbone.save_pretrained(str(directory), state_dict=state, safe_serialization=True)
         self.config.save_pretrained(directory)
         if processor is not None:

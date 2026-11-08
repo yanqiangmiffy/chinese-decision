@@ -18,6 +18,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from decision.serving.api import check_response
+from decision.configuration import POINTER_PROMPT_VERSION
 from decision.processing import PROMPT_VERSION
 from decision.utils import sha256
 
@@ -65,7 +66,7 @@ def check_api(url, payload):
 def verify_model(args, payload):
     model = Path(args.model).resolve()
     configuration = json.loads((model / "decision_config.json").read_text())
-    if configuration["prompt_version"] != PROMPT_VERSION:
+    if configuration["prompt_version"] != (POINTER_PROMPT_VERSION if "pointer" in configuration else PROMPT_VERSION):
         raise ValueError("saved model uses a different prompt compiler")
     if not math.isfinite(configuration["temperature"]) or configuration["temperature"] <= 0:
         raise ValueError("invalid calibration temperature")

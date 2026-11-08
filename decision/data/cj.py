@@ -10,13 +10,14 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from ..processing import examples_for, partition
+from ..configuration import LETTERS
+from ..processing import examples_for, partition, request_for
 
 DOMAINS = ("general", "medical", "legal", "finance")
 FULL_TRAIN_DECISIONS = 13_048_000
 
 
-def read_examples(root, domain, split, stats=None, subset=None):
+def read_examples(root, domain, split, stats=None, subset=None, max_options=len(LETTERS)):
     path = Path(root) / domain / f"{split}.cases.jsonl.gz"
     stats = stats if stats is not None else Counter()
     with gzip.open(path, "rt", encoding="utf-8") as stream:
@@ -28,7 +29,7 @@ def read_examples(root, domain, split, stats=None, subset=None):
             if subset is not None and partition(case) not in subset:
                 continue
             try:
-                examples = list(examples_for(case, domain))
+                examples = list(examples_for(case, domain, max_options))
             except (ValueError, KeyError, TypeError) as exc:
                 # Invalid labels must never silently become class zero.
                 raise ValueError(f"{path}:{line_no}: {exc}") from exc
@@ -40,10 +41,12 @@ def read_examples(root, domain, split, stats=None, subset=None):
 def prepare_domain(spec):
     """Split one domain's training file into per-(source, type) shards for `prepared_examples`.
 
-    `spec` is `(data, destination, domain, expected_decisions)`, a single tuple so the
-    function can be mapped over a process pool.
+    `spec` is `(data, destination, domain, expected_lines[, multi])`, a single tuple so the function
+    can be mapped over a process pool. CJ keeps one decision per line; `multi` allows several questions
+    about one state per line (the decision mix), sharded under the first question's type.
     """
-    data, destination, domain, expected = spec
+    data, destination, domain, expected, *rest = spec
+    multi = bool(rest and rest[0])
     data, destination = Path(data), Path(destination)
     marker = destination / domain / "manifest.json"
     if marker.exists():
@@ -61,9 +64,9 @@ def prepare_domain(spec):
                 if not line.strip():
                     continue
                 case = json.loads(line)
-                if len(case["questions"]) != 1:
+                if len(case["questions"]) != 1 and not multi:
                     raise ValueError("preprocessing expects CJ's one-decision-per-line contract")
-                question, = case["questions"].values()
+                question = next(iter(case["questions"].values()))
                 meta = case.get("_meta") or {}
                 source = str(meta.get("source_family") or meta.get("source_id") or meta.get("source") or "unknown")
                 kind = question["type"]
@@ -75,7 +78,7 @@ def prepare_domain(spec):
                     path = directory / name
                     files[key] = gzip.open(path.with_suffix(path.suffix + ".partial"), "wb", compresslevel=1)
                     descriptions[key] = {"domain": domain, "source": source, "kind": kind,
-                                         "path": str(path.relative_to(destination)), "decisions": 0}
+                                         "path": path.relative_to(destination).as_posix(), "decisions": 0}
                 files[key].write(line)
                 descriptions[key]["decisions"] += 1
                 count += 1
@@ -110,18 +113,46 @@ def shuffled(stream, rng, buffer_size):
     yield from buffer
 
 
-def prepared_examples(root, domains, seed, stats, buffer_size=256):
-    """Interleave shards in proportion to their remaining decisions; each one is visited once."""
-    manifest = json.loads((Path(root) / "manifest.json").read_text(encoding="utf-8"))
-    if manifest.get("validation_included") is not False:
-        raise ValueError("prepared corpus must contain training data only")
-    entries = [entry for entry in manifest["strata"] if entry["domain"] in domains]
+def prepared_strata(roots, domains, fractions=None):
+    """Strata of one or more prepared corpora; `fractions` keeps the first f of each shard.
+
+    Keys are `domain` or `domain:kind` (the shard's question type); `domain:kind` wins.
+    """
+    entries = []
+    for root in [roots] if isinstance(roots, (str, Path)) else roots:
+        manifest = json.loads((Path(root) / "manifest.json").read_text(encoding="utf-8"))
+        if manifest.get("validation_included") is not False:
+            raise ValueError("prepared corpus must contain training data only")
+        for entry in manifest["strata"]:
+            if entry["domain"] in domains:
+                fraction = (fractions or {}).get(f"{entry['domain']}:{entry['kind']}",
+                                                 (fractions or {}).get(entry["domain"], 1.0))
+                kept = int(entry["decisions"] * fraction)
+                if kept:
+                    entries.append(dict(entry, root=str(root), decisions=kept))
+    return entries
+
+
+def prepared_examples(root, domains, seed, stats, buffer_size=256, fractions=None, max_options=len(LETTERS),
+                      requests=False):
+    """Interleave shards in proportion to their remaining lines; each one is visited once.
+
+    `root` is one prepared corpus or a list of them; `fractions` subsamples domains (see `prepared_strata`).
+    With `requests` each line yields one `Request` (all its questions, read jointly by the pointer
+    readout) instead of one `Example` per question.
+    """
+    entries = prepared_strata(root, domains, fractions)
     def read(entry):
-        with gzip.open(Path(root) / entry["path"], "rt", encoding="utf-8") as stream:
-            for line in stream:
+        with gzip.open(Path(entry["root"]) / entry["path"], "rt", encoding="utf-8") as stream:
+            for line, _ in zip(stream, range(entry["decisions"])):
                 case = json.loads(line)
                 stats[entry["domain"] + ":rows"] += 1
-                for example in examples_for(case, entry["domain"]):
+                if requests:
+                    request = request_for(case, entry["domain"], max_options)
+                    stats[entry["domain"] + ":" + request.kind] += 1
+                    yield request
+                    continue
+                for example in examples_for(case, entry["domain"], max_options):
                     stats[entry["domain"] + ":" + example.kind] += 1
                     yield example
     streams = {i: iter(shuffled(read(entry), random.Random(seed + i), buffer_size)) for i, entry in enumerate(entries)}
@@ -138,11 +169,22 @@ def prepared_examples(root, domains, seed, stats, buffer_size=256):
             raise ValueError(f"prepared stratum has fewer rows than its manifest: {entries[i]['path']}")
 
 
-def validation_items(root, domains, processor, per_stratum=100, subset=(1, 2, 3, 4), seed=42):
-    """Reservoir samples every domain/type over the entire released validation split."""
+def validation_items(root, domains, processor, per_stratum=100, subset=(1, 2, 3, 4), seed=42, per_source=0):
+    """Reservoir samples every domain/type over the entire released validation split.
+
+    `root` is one corpus directory or a list of them; each domain is read from the roots that have it.
+    With `per_source`, every source also gets a reservoir of its own (on top of the domain/type ones), so
+    small sources are measured too and a collapse on one of them shows in its `source:` metrics.
+    """
     rng, reservoirs, seen, stats = random.Random(seed), {}, Counter(), Counter()
+    by_source, source_seen = {}, Counter()
+    roots = [root] if isinstance(root, (str, Path)) else list(root)
     for domain in domains:
-        for example in read_examples(root, domain, "validation", stats, subset):
+        found = [r for r in roots if (Path(r) / domain / "validation.cases.jsonl.gz").exists()]
+        if not found:
+            raise FileNotFoundError(f"no validation split for domain {domain} in {roots}")
+        for example in (x for r in found for x in read_examples(r, domain, "validation", stats, subset,
+                                                                    processor.max_options)):
             key = (domain, example.kind)
             seen[key] += 1
             bucket = reservoirs.setdefault(key, [])
@@ -152,5 +194,21 @@ def validation_items(root, domains, processor, per_stratum=100, subset=(1, 2, 3,
                 i = rng.randrange(seen[key])
                 if i < per_stratum:
                     bucket[i] = example
-    chosen = [processor.encode_example(example, stats=stats) for bucket in reservoirs.values() for example in bucket]
+            if per_source:
+                name = (domain, example.source)
+                source_seen[name] += 1
+                bucket = by_source.setdefault(name, [])
+                if len(bucket) < per_source:
+                    bucket.append(example)
+                else:
+                    i = rng.randrange(source_seen[name])
+                    if i < per_source:
+                        bucket[i] = example
+    examples, ids = [], set()
+    for bucket in list(reservoirs.values()) + list(by_source.values()):
+        for example in bucket:
+            if id(example) not in ids:              # an example in both reservoirs is validated once
+                ids.add(id(example))
+                examples.append(example)
+    chosen = [processor.encode_example(example, stats=stats) for example in examples]
     return [item for item in chosen if item is not None], dict(stats)

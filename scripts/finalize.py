@@ -15,6 +15,7 @@ import torch
 from decision.data.cj import validation_items
 from decision.metrics import summarize
 from decision.modeling import DecisionModel
+from decision.configuration import POINTER_MAX_OPTIONS
 from decision.processing import LETTERS, DecisionProcessor
 from decision.training.common import evaluate_decisions, fit_temperature
 from decision.utils import log, model_name_for
@@ -24,6 +25,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run", default="runs/cj-ddp")
     parser.add_argument("--out", default="models/chinese-decision-0.8b")
+    parser.add_argument("--checkpoint", default="best",
+                        help="checkpoint directory under --run to export (best, final, step-N)")
     parser.add_argument("--calibration-per-stratum", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=32, help="single-GPU calibration/validation batch limit")
     parser.add_argument("--token-budget", type=int, default=16384, help="single-GPU evaluation token budget")
@@ -32,6 +35,16 @@ def parse_args(argv=None):
     if min(args.calibration_per_stratum, args.batch_size, args.token_budget) <= 0:
         parser.error("calibration, batch and token limits must be positive")
     return args
+
+
+def selected_checkpoint(run, name):
+    """How the exported checkpoint was chosen: best/ records its selection; other checkpoints are named by hand."""
+    path = run / name / "selection.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    progress = json.loads((run / "progress.json").read_text())
+    step = int(name.split("-", 1)[1]) if name.startswith("step-") else progress.get("step")
+    return {"step": step, "metric": "chosen checkpoint", "checkpoint": name}
 
 
 def main():
@@ -46,7 +59,8 @@ def main():
     log("export_stage", stage="loading", run=str(run), model_name=model_name)
     processor = DecisionProcessor.from_pretrained(config["base"])
     processor.config.max_length = config["max_length"]
-    model = DecisionModel.from_pretrained(config["base"], adapter=run / "best")
+    model = DecisionModel.from_pretrained(config["base"], adapter=run / args.checkpoint)
+    processor.config.pointer = model.config.pointer     # pointer runs keep their head next to the adapter
     letters = model.letter_tensor(processor)
     validation = torch.load(run / "validation_tokens.pt", weights_only=False)
     model.eval()
@@ -67,7 +81,7 @@ def main():
     summary = {"source_run": str(run), "base_model": base_model_id, "model_name": model_name,
                "dataset": "bbldCVer-hf/CJ-Dataset", "dataset_revision": config.get("data_revision"),
                "method_reference": "n4ze3m/hmm", "prompt_version": config["prompt_version"],
-               "selected_checkpoint": json.loads((run / "best/selection.json").read_text()),
+               "selected_checkpoint": selected_checkpoint(run, args.checkpoint),
                "training_progress": json.loads((run / "progress.json").read_text())}
     summary["training_algorithm"] = config.get("training_algorithm")
     (out / "training_summary.json").write_text(json.dumps(summary, indent=2))
@@ -93,9 +107,13 @@ def main():
               "evaluation_batch_size": args.batch_size, "evaluation_token_budget": args.token_budget,
               "note": "Released validation subset; used for model selection. Not a CJ-Bench test score."}
     (run / "calibration.json").write_text(json.dumps(report, indent=2))
-    (out / "decision_config.json").write_text(json.dumps({"model_name": model_name, "temperature": temperature, "prompt_version": config["prompt_version"],
-                                                           "max_length": config["max_length"], "max_options": len(LETTERS),
-                                                           "source_run": str(run), "merge_probe_max_logit_delta": delta}, indent=2))
+    exported = {"model_name": model_name, "temperature": temperature, "prompt_version": config["prompt_version"],
+                "max_length": config["max_length"],
+                "max_options": POINTER_MAX_OPTIONS if model.config.pointer else len(LETTERS),
+                "source_run": str(run), "merge_probe_max_logit_delta": delta}
+    if model.config.pointer is not None:
+        exported["pointer"] = model.config.pointer.to_dict()
+    (out / "decision_config.json").write_text(json.dumps(exported, indent=2))
     (out / "validation_report.json").write_text(json.dumps(report, indent=2))
     print(json.dumps({"merged": str(out), "temperature": temperature, "parity_max_delta": delta,
                       "raw": raw_metrics["all"], "calibrated": report["after"]["all"]}), flush=True)

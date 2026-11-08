@@ -19,7 +19,8 @@ from fastapi import FastAPI, HTTPException
 
 from decision.serving.api import build_answer
 from decision.serving.backends import GGUFBackend, TransformersBackend, candidate_probabilities
-from decision.processing import LETTERS, MAX_LENGTH, PROMPT_VERSION, compile_prompt, options_for
+from decision.configuration import POINTER_MAX_OPTIONS, POINTER_PROMPT_VERSION
+from decision.processing import LETTERS, MAX_LENGTH, PROMPT_VERSION, compile_prompt, option_code, options_for
 from decision.serving.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
 from decision.serving.tournament import from_request as tournament_from
 from decision.utils import model_name_for
@@ -104,8 +105,12 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
     temperature = config.get("temperature", 1.)
     max_length = config.get("max_length", MAX_LENGTH)
     candidate_probabilities([0., 0.], temperature)
-    if config.get("prompt_version", PROMPT_VERSION) != PROMPT_VERSION:
+    pointer = "pointer" in config
+    if config.get("prompt_version", PROMPT_VERSION) != (POINTER_PROMPT_VERSION if pointer else PROMPT_VERSION):
         raise ValueError("saved model uses a different prompt compiler")
+    if pointer and backend != "transformers":
+        raise ValueError("pointer-head models are served by the transformers backend")
+    max_options = POINTER_MAX_OPTIONS if pointer else len(LETTERS)
     if backend == "gguf":
         if adapter or not gguf:
             raise ValueError("GGUF backend requires --gguf and does not accept --adapter")
@@ -142,31 +147,40 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
         return compile_questions(body["state"], body["questions"])
 
     def compile_questions(state, questions):
-        """Compile any number of questions about one state."""
+        """Compile any number of questions about one state: [(name, question, options, ids, prompt, pointer)].
+
+        `pointer` is the encoded pointer input (positions of markers and span) for pointer models, else None.
+        """
         compiled = []
         for name, question in questions.items():
             try:
-                options = options_for(question)
-                prompt = compile_prompt(tokenizer, state, question["instructions"], options)
-                ids = tokenizer.encode(prompt, add_special_tokens=False)
+                options = options_for(question, max_options)
+                if pointer:
+                    marks = engine.processor.encode_options(state, question["instructions"], options)
+                    ids = marks["input_ids"]
+                    prompt = tokenizer.decode(ids)
+                else:
+                    prompt, marks = compile_prompt(tokenizer, state, question["instructions"], options), None
+                    ids = tokenizer.encode(prompt, add_special_tokens=False)
                 if len(ids) > max_length:
                     raise ValueError(f"input has {len(ids)} tokens; limit {max_length}; input was not truncated")
                 if hasattr(engine, "validate_tokens"):
                     engine.validate_tokens(prompt, ids)
             except (KeyError, TypeError, ValueError) as exc:
                 raise RequestError(f"question {name}: {exc}") from exc
-            compiled.append((name, question, options, ids, prompt))
+            compiled.append((name, question, options, ids, prompt, marks))
         return compiled
 
     def evaluate(compiled):
         """Candidate logits per question. Questions run serially, which bounds memory; the lock is taken per
         question so a long batch does not hold up single requests until it finishes."""
         rows = []
-        for _, _, options, ids, _ in compiled:
+        for _, _, options, ids, _, marks in compiled:
             with lock:
                 begun = time.perf_counter()
                 try:
-                    rows.append(engine.logits(ids, len(options)))
+                    rows.append(engine.logits(ids, len(options)) if marks is None
+                                else engine.logits(ids, len(options), marks))
                 except Exception:
                     stats.error()
                     raise
@@ -176,7 +190,7 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
 
     def respond(compiled, rows, latency_ms, debug):
         answers = {}
-        for (name, question, options, ids, _), logits in zip(compiled, rows):
+        for (name, question, options, ids, _, _), logits in zip(compiled, rows):
             answer = build_answer(question["type"], options, candidate_probabilities(logits, temperature))
             if debug:
                 answer["logits"] = {key: round(value, 4) for (key, _), value in zip(options, logits)}
@@ -285,15 +299,16 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
             raise HTTPException(422, str(exc)) from exc
         return {"prompt_version": PROMPT_VERSION, "questions": {
             name: {"prompt": prompt, "input_tokens": len(ids),
-                   "options": [{"letter": LETTERS[i], "key": key, "description": description}
+                   "options": [{"letter": option_code(i) if pointer else LETTERS[i], "key": key,
+                                "description": description}
                                for i, (key, description) in enumerate(options)]}
-            for name, _, options, ids, prompt in compiled}}
+            for name, _, options, ids, prompt, _ in compiled}}
 
     @app.get("/v1/info")
     def info():
         return {"model": model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
                 "limits": {"max_length": max_length, "max_questions": MAX_QUESTIONS,
-                           "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS,
+                           "max_candidates": max_options, "max_batch_requests": MAX_BATCH_REQUESTS,
                            "max_tournament_candidates": MAX_TOURNAMENT_CANDIDATES},
                 "checkpoint": checkpoint, "validation": validation,
                 # No dynamic batching: every forward pass is one prompt of at most max_length tokens.

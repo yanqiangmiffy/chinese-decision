@@ -48,7 +48,8 @@ def token_batches(stream, processor, batch_size, token_budget, seed, stats, pool
         rng.shuffle(batches)
         return batches
     for example in stream:
-        item = processor.encode_example(example, rng, stats)
+        encode = processor.encode_request if hasattr(example, "examples") else processor.encode_example
+        item = encode(example, rng, stats)
         if item is None:
             continue
         pool.append(item)

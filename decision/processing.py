@@ -17,6 +17,23 @@ from the echo (see decision.modeling.SpanHead).
     逐字定位：
     {text, one unit per character}     <- span vectors
 
+Pointer decisions (`DecisionConfig.pointer`) put a whole request in one sequence: the state once,
+then every question with its candidates under codes A..Z, AA, AB, ...; each candidate line ends with a
+candidate marker and each question with a decide marker. The pointer head scores a question's
+candidate markers against its decide marker, so a question is bounded by the context window rather
+than an alphabet, and several questions cost about one forward pass:
+
+    <|im_start|>user
+    待判断的上下文：...                          <- bidirectional span starts here
+    问题1：...
+    候选项：
+    A: key — description<|object_ref_end|>     <- one candidate marker per candidate
+    ...
+    选出最符合的候选项。<|object_ref_start|>      <- decide marker of question 1
+    问题2：...  ...<|object_ref_start|>           <- ... and ends after the last decide marker
+    <|im_end|>
+    <|im_start|>assistant ...
+
 The module imports without torch, so the GGUF server can compile prompts on a CPU-only install.
 """
 import hashlib
@@ -27,7 +44,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from .configuration import LETTERS, MAX_LENGTH, PROMPT_VERSION, DecisionConfig
+from .configuration import LETTERS, MAX_LENGTH, POINTER_MAX_OPTIONS, PROMPT_VERSION, DecisionConfig
 from .utils import resolve_pretrained
 
 if TYPE_CHECKING:
@@ -48,8 +65,11 @@ def text(value):
     return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def options_for(question):
-    """`[(candidate key, description)]` of a CJ question; raises on an invalid question."""
+def options_for(question, max_options=len(LETTERS)):
+    """`[(candidate key, description)]` of a CJ question; raises on an invalid question.
+
+    `max_options` is the readout's limit: 26 letters, or `POINTER_MAX_OPTIONS` for the pointer head.
+    """
     if not isinstance(question, dict) or question.get("instructions") is None:
         raise ValueError("question requires non-null instructions")
     kind, criteria = question["type"], question.get("criteria")
@@ -64,8 +84,8 @@ def options_for(question):
         options = [("false", text(criteria.get("false", "否"))), ("true", text(criteria.get("true", "是")))]
     else:
         raise ValueError(f"invalid question type/criteria: {kind}")
-    if not 2 <= len(options) <= len(LETTERS):
-        raise ValueError(f"requires 2-{len(LETTERS)} candidates; got {len(options)}")
+    if not 2 <= len(options) <= max_options:
+        raise ValueError(f"requires 2-{max_options} candidates; got {len(options)}")
     return options
 
 
@@ -103,6 +123,18 @@ def partition(case):
     return int(hashlib.sha256(group_key(case).encode()).hexdigest()[:8], 16) % 5
 
 
+def option_code(index):
+    """The candidate code of position `index`: A..Z, then AA, AB, ..., ZZ, AAA, ... (bijective base 26)."""
+    code, index = "", index + 1
+    while index:
+        index, rest = divmod(index - 1, 26)
+        code = LETTERS[rest] + code
+    return code
+
+
+POINTER_TAIL = "选出最符合的候选项。"
+
+
 def user_prompt(state, instructions, options):
     return ("待判断的上下文：\n" + text(state)
             + "\n\n问题：\n" + text(instructions)
@@ -115,6 +147,21 @@ def compile_prompt(tokenizer, state, instructions, options):
     return tokenizer.apply_chat_template(
         [{"role": "user", "content": user_prompt(state, instructions, options)}],
         tokenize=False, add_generation_prompt=True, enable_thinking=False)
+
+
+@dataclass
+class Request:
+    """Several decisions about one state, read in one pointer sequence."""
+
+    state: object
+    examples: list
+    domain: str
+    source: str
+    case_id: str
+
+    @property
+    def kind(self):
+        return self.examples[0].kind if len(self.examples) == 1 else "joint"
 
 
 @dataclass
@@ -143,15 +190,21 @@ class Example:
                 [self.target[i] for i in order])
 
 
-def examples_for(case, domain):
+def examples_for(case, domain, max_options=len(LETTERS)):
     """The decisions of one CJ case (one per question)."""
     meta = case.get("_meta") or {}
     for name, question in case["questions"].items():
-        options = options_for(question)
+        options = options_for(question, max_options)
         target = target_for(case["gold"][name], options, question["type"])
         yield Example(case["state"], question["instructions"], options, target, question["type"], domain,
                       str(meta.get("source_family") or meta.get("source_id") or meta.get("source") or "unknown"),
                       str(case.get("id", "")) + ":" + name)
+
+
+def request_for(case, domain, max_options=len(LETTERS)):
+    """All decisions of one CJ case as a `Request`."""
+    examples = list(examples_for(case, domain, max_options))
+    return Request(case["state"], examples, domain, examples[0].source, str(case.get("id", "")))
 
 
 def text_units(text):
@@ -235,6 +288,118 @@ class DecisionProcessor:
         return self.config.max_length
 
     @property
+    def pointer(self):
+        return self.config.pointer
+
+    @property
+    def max_options(self):
+        return POINTER_MAX_OPTIONS if self.pointer is not None else len(LETTERS)
+
+    def _single(self, marker):
+        ids = self.tokenizer.encode(marker, add_special_tokens=False)
+        if len(ids) != 1:
+            raise ValueError(f"pointer marker {marker!r} must be a single token")
+        return ids[0]
+
+    @property
+    def marker_id(self):
+        """Token id of the candidate marker."""
+        return self._single(self.pointer.marker)
+
+    @property
+    def decide_id(self):
+        """Token id of the decide marker."""
+        return self._single(self.pointer.decide_marker)
+
+    def _chat_parts(self):
+        """The chat template's text before and after a user message, generation prompt included."""
+        if getattr(self, "_parts", None) is None:
+            sentinel = "\u2063POINTER\u2063"
+            rendered = self.tokenizer.apply_chat_template([{"role": "user", "content": sentinel}], tokenize=False,
+                                                          add_generation_prompt=True, enable_thinking=False)
+            before, after = rendered.split(sentinel)
+            self._parts = (before, after)
+        return self._parts
+
+    def pointer_ids(self, state, questions):
+        """One pointer sequence for `[(instructions, options)]` about `state`.
+
+        Returns `{"input_ids", "span": [start, end), "questions": [{"marks", "decide"}]}`: the candidate
+        and decide marker positions and the bidirectional span (from the state to the last decide
+        marker). Pieces are tokenized separately, so positions come from construction, never from
+        searching the text; both marker strings are removed from user text.
+        """
+        markers = (self.pointer.marker, self.pointer.decide_marker)
+        marker_id, decide_id = self.marker_id, self.decide_id
+
+        def clean(value):
+            value = text(value)
+            for m in markers:
+                value = value.replace(m, "")
+            return value
+        before, after = self._chat_parts()
+        ids = list(self._ids(before))
+        start = len(ids)
+        ids += self._ids("待判断的上下文：\n" + clean(state) + "\n")
+        encoded = []
+        for n, (instructions, options) in enumerate(questions, 1):
+            ids += self._ids(f"\n问题{n}：\n" + clean(instructions) + "\n候选项：\n")
+            marks = []
+            for i, (key, description) in enumerate(options):
+                ids += self._ids(f"{option_code(i)}: {clean(key)} — {clean(description)}")
+                marks.append(len(ids))
+                ids.append(marker_id)
+                ids += self._unit_ids("\n")
+            ids += self._ids(POINTER_TAIL)
+            encoded.append({"marks": marks, "decide": len(ids)})
+            ids.append(decide_id)
+        end = len(ids)
+        ids += self._ids("\n" + after)
+        return {"input_ids": ids, "span": [start, end], "questions": encoded}
+
+    def encode_options(self, state, instructions, options):
+        """One question's model input in this readout's layout (`input_ids`, plus pointer positions)."""
+        if len(options) > self.max_options:
+            raise ValueError(f"requires 2-{self.max_options} candidates; got {len(options)}")
+        if self.pointer is not None:
+            return self.pointer_ids(state, [(instructions, options)])
+        return {"input_ids": self.tokenizer.encode(self.build_prompt(state, instructions, options),
+                                                   add_special_tokens=False)}
+
+    def encode_request(self, request, rng=None, stats=None):
+        """A pointer sequence for every decision of a `Request`, or None when it is longer than `max_length`.
+
+        With `rng` (training) the question order and each question's candidates are shuffled (`score`
+        levels keep their order). Each entry of `questions` carries its target and kind.
+        """
+        if self.pointer is None:
+            raise ValueError("requests are read jointly by the pointer readout only")
+        examples = list(request.examples)
+        if rng is not None:
+            rng.shuffle(examples)
+        questions, targets = [], []
+        for example in examples:
+            if len(example.options) > self.max_options:
+                raise ValueError(f"requires 2-{self.max_options} candidates; got {len(example.options)}")
+            order = list(range(len(example.options)))
+            if rng is not None and example.kind in ("choice", "noul"):
+                rng.shuffle(order)
+            questions.append((example.instructions, [example.options[i] for i in order]))
+            targets.append([example.target[i] for i in order])
+        encoded = self.pointer_ids(request.state, questions)
+        if len(encoded["input_ids"]) > self.max_length:
+            if stats is not None:
+                stats[f"{request.domain}:overlength"] += 1
+            return None
+        for entry, example, target in zip(encoded["questions"], examples, targets):
+            entry.update(target=target, kind=example.kind, hard=example.hard)
+        item = {**encoded, "kind": request.kind, "domain": request.domain, "source": request.source,
+                "case_id": request.case_id}
+        if len(examples) == 1:
+            item.update(target=targets[0], hard=examples[0].hard)
+        return item
+
+    @property
     def letter_ids(self):
         """Token id of each candidate letter A-Z; every letter must be one token."""
         ids = [self.tokenizer.encode(letter, add_special_tokens=False) for letter in LETTERS]
@@ -248,29 +413,36 @@ class DecisionProcessor:
         return compile_prompt(self.tokenizer, state, instructions, options)
 
     def encode_example(self, example, rng=None, stats=None):
-        """An encoded decision, or None when it is longer than `max_length` (counted in `stats`)."""
+        """An encoded decision, or None when it is longer than `max_length` (counted in `stats`).
+
+        With `rng` (training) the candidates are shuffled: `choice` always, `noul` too for the pointer
+        head, whose answer must not depend on where a candidate is listed. `score` levels keep their order.
+        """
+        if self.pointer is not None:
+            return self.encode_request(Request(example.state, [example], example.domain, example.source,
+                                               example.case_id), rng, stats)
         prompt, target = example.render(self.tokenizer, rng)
-        ids = self.tokenizer.encode(prompt, add_special_tokens=False)
-        if len(ids) > self.max_length:
+        encoded = {"input_ids": self.tokenizer.encode(prompt, add_special_tokens=False)}
+        if len(encoded["input_ids"]) > self.max_length:
             if stats is not None:
                 stats[f"{example.domain}:overlength"] += 1
             return None
-        return {"input_ids": ids, "target": target, "kind": example.kind, "domain": example.domain,
+        return {**encoded, "target": target, "kind": example.kind, "domain": example.domain,
                 "source": example.source, "case_id": example.case_id, "hard": example.hard}
 
     def encode_case(self, case, domain="general", rng=None, stats=None):
         """Encoded decisions of a CJ case; over-length ones are left out."""
-        items = [self.encode_example(example, rng, stats) for example in examples_for(case, domain)]
+        items = [self.encode_example(example, rng, stats)
+                 for example in examples_for(case, domain, self.max_options)]
         return [item for item in items if item is not None]
 
     def encode_question(self, state, question):
         """An inference input for one question (uniform placeholder target); raises when too long."""
-        options = options_for(question)
-        ids = self.tokenizer.encode(self.build_prompt(state, question["instructions"], options),
-                                    add_special_tokens=False)
-        if len(ids) > self.max_length:
-            raise ValueError(f"the question is {len(ids)} tokens; the model accepts {self.max_length}")
-        return {"input_ids": ids, "target": [1 / len(options)] * len(options), "kind": question["type"],
+        options = options_for(question, self.max_options)
+        encoded = self.encode_options(state, question["instructions"], options)
+        if len(encoded["input_ids"]) > self.max_length:
+            raise ValueError(f"the question is {len(encoded['input_ids'])} tokens; the model accepts {self.max_length}")
+        return {**encoded, "target": [1 / len(options)] * len(options), "kind": question["type"],
                 "options": options}
 
     def pad_decisions(self, items, device=None):
@@ -283,6 +455,37 @@ class DecisionProcessor:
                                      for e in items], padding=True,
                                     pad_to_multiple_of=PAD_MULTIPLE if len(items) > 1 else None, return_tensors="pt")
         return inputs.to(device) if device is not None else inputs
+
+    def pad_pointer(self, items, device=None):
+        """`pad_decisions` plus pointer positions in the padded batch.
+
+        Questions are numbered across the batch in item order; for question q, `decide_*[q]` is its
+        decide marker and `mark_*` with `mark_question == q` its candidates (`mark_slot` in listed order).
+        `span_start/span_end` bound each row's bidirectional span.
+        """
+        import torch
+        inputs = self.pad_decisions(items)
+        width = inputs["input_ids"].shape[1]
+        marks, decides, spans = [], [], []
+        for b, item in enumerate(items):
+            offset = width - len(item["input_ids"])
+            for question in item["questions"]:
+                q = len(decides)
+                decides.append((b, question["decide"] + offset))
+                marks += [(b, mark + offset, slot, q) for slot, mark in enumerate(question["marks"])]
+            spans.append((item["span"][0] + offset, item["span"][1] + offset))
+        mark, decide, span = (torch.tensor(x, dtype=torch.long) for x in (marks, decides, spans))
+        result = {"input_ids": inputs["input_ids"], "attention_mask": inputs["attention_mask"],
+                  "mark_row": mark[:, 0], "mark_col": mark[:, 1], "mark_slot": mark[:, 2], "mark_question": mark[:, 3],
+                  "decide_row": decide[:, 0], "decide_col": decide[:, 1],
+                  "span_start": span[:, 0], "span_end": span[:, 1]}
+        return {k: v.to(device) for k, v in result.items()} if device is not None else result
+
+    @staticmethod
+    def question_targets(items):
+        """`(target, kind)` of every question of encoded decisions, in `pad_pointer` order."""
+        return [(q.get("target", item.get("target")), q.get("kind", item.get("kind")))
+                for item in items for q in item.get("questions", [item])]
 
     # extraction
 

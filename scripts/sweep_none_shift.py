@@ -56,7 +56,8 @@ def combine(result, choice):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", required=True, help="exported unified model directory")
+    parser.add_argument("--model", required=True, help="exported unified model directory, or a training run")
+    parser.add_argument("--base", help="base model of a training run (adapter/ + span_head.pt) given as --model")
     parser.add_argument("--data", default="datasets/cj-ie")
     parser.add_argument("--shifts", default="-1,-0.5,0,0.25,0.5,0.75,1,1.25,1.609")
     parser.add_argument("--nested", action="store_true", help="also decode every shift without the flat constraint")
@@ -66,7 +67,8 @@ def main():
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
-    pipe = DecisionPipeline.from_pretrained(args.model, device=args.device)
+    pipe = (DecisionPipeline.from_run(args.base, args.model, args.device) if args.base
+            else DecisionPipeline.from_pretrained(args.model, device=args.device))
     released = pipe.model.config.extraction.none_shift
     shifts = [released] + [s for s in map(float, args.shifts.split(",")) if abs(s - released) > 1e-3]
     settings = [(f"shift={s:g},flat", (released, 0.0, True, s)) for s in shifts]

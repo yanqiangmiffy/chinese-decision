@@ -1,8 +1,9 @@
 """Configuration of a decision model beyond its backbone, stored as `decision_config.json`.
 
 Released decision-only models (chinese-decision-0.8b/2b/4b) carry the decision settings; unified
-models add an `extraction` section for the span head. Unknown keys are kept in `metadata`, so a
-file round-trips unchanged.
+models add an `extraction` section for the span head. A `pointer` section replaces the A-Z letter
+readout with a pointer head over candidate markers (no alphabet limit). Unknown keys are kept in
+`metadata`, so a file round-trips unchanged.
 """
 import json
 from dataclasses import dataclass, field, fields
@@ -13,6 +14,13 @@ from .utils import resolve_pretrained
 CONFIG_NAME = "decision_config.json"
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 PROMPT_VERSION = "hmm-zh-v1"
+POINTER_PROMPT_VERSION = "pointer-joint-zh-v1"
+# Single special tokens: one ends each candidate line (its state represents the candidate), one ends
+# each question (its state reads the question and is scored against that question's candidates).
+POINTER_MARKER = "<|object_ref_end|>"
+DECIDE_MARKER = "<|object_ref_start|>"
+# Pointer candidates are bounded by the context window only; this caps one question's list.
+POINTER_MAX_OPTIONS = 4096
 # Longer inputs are rejected everywhere; context and questions are never truncated.
 MAX_LENGTH = 16384
 
@@ -50,6 +58,30 @@ class ExtractionConfig:
 
 
 @dataclass
+class PointerConfig:
+    """Pointer readout: candidate markers scored against their question's decide marker.
+
+    `bidirectional`: in the full-attention layers, prompt tokens (state, questions, candidates, markers)
+    also attend to later prompt tokens; linear-attention layers stay causal. A model must be trained
+    and served with the same setting.
+    """
+
+    hidden_size: int
+    dim: int = 256
+    marker: str = POINTER_MARKER
+    decide_marker: str = DECIDE_MARKER
+    bidirectional: bool = True
+
+    def to_dict(self):
+        return {"hidden_size": self.hidden_size, "dim": self.dim, "marker": self.marker,
+                "decide_marker": self.decide_marker, "bidirectional": self.bidirectional}
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)
+
+
+@dataclass
 class DecisionConfig:
     """Decision readout settings, plus the span head's when the model also extracts."""
 
@@ -59,11 +91,17 @@ class DecisionConfig:
     max_options: int = len(LETTERS)
     model_name: str = None
     extraction: ExtractionConfig = None
+    pointer: PointerConfig = None
     metadata: dict = field(default_factory=dict)
 
     @property
     def can_extract(self):
         return self.extraction is not None
+
+    @property
+    def readout(self):
+        """`"pointer"` when decisions are read by the pointer head, else `"letters"` (A-Z next-token logits)."""
+        return "pointer" if self.pointer is not None else "letters"
 
     def to_dict(self):
         data = {"model_name": self.model_name, "temperature": self.temperature, "prompt_version": self.prompt_version,
@@ -72,16 +110,18 @@ class DecisionConfig:
             del data["model_name"]
         if self.extraction is not None:
             data["extraction"] = self.extraction.to_dict()
+        if self.pointer is not None:
+            data["pointer"] = self.pointer.to_dict()
         return data
 
     @classmethod
     def from_dict(cls, data):
         data = dict(data)
-        known = {f.name for f in fields(cls)} - {"metadata", "extraction"}
+        known = {f.name for f in fields(cls)} - {"metadata", "extraction", "pointer"}
         values = {name: data.pop(name) for name in list(data) if name in known}
-        extraction = data.pop("extraction", None)
+        extraction, pointer = data.pop("extraction", None), data.pop("pointer", None)
         return cls(**values, extraction=ExtractionConfig.from_dict(extraction) if extraction else None,
-                   metadata=data)
+                   pointer=PointerConfig.from_dict(pointer) if pointer else None, metadata=data)
 
     @classmethod
     def from_pretrained(cls, name_or_path, revision=None):
