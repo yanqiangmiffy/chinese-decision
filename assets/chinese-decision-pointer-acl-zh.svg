@@ -1,0 +1,295 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1080" viewBox="0 0 1800 1080" role="img" aria-labelledby="title desc">
+<title id="title">Chinese Decision: Joint Pointer Decision Model</title>
+<desc id="desc">Decision-only Qwen3.5 architecture. All questions share one prompt and one backbone forward pass. Full-attention layers allow bidirectional attention within the joint prompt; linear-attention layers remain causal. A shared LayerNorm and two projections produce candidate keys and question queries. Candidate logits combine a scaled dot product and an affine candidate prior. Valid candidate scores are temperature-scaled and normalized per question.</desc>
+<style>path,line,rect{vector-effect:non-scaling-stroke}</style>
+<rect width="1800" height="1080" fill="white"/>
+<text data-label="true" x="36" y="47" font-size="31" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">Chinese Decision：多题联合指针决策模型</text>
+<text data-label="true" x="37" y="79" font-size="20" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">共享上下文与提示序列  ·  一次主干前向计算  ·  逐题输出候选概率分布</text>
+<rect x="35" y="108" width="1730" height="437" rx="9" fill="white" stroke="#D6DDE5" stroke-width="1.2"/>
+<text data-label="true" x="57" y="144" font-size="24" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">(a)  多题联合决策主流程</text>
+<text data-label="true" x="67" y="183" font-size="22" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">联合请求</text>
+<rect x="67" y="202" width="370" height="276" rx="7" fill="#FAFCFE" stroke="#CBD4DE" stroke-width="1.2"/>
+<rect x="81" y="215" width="342" height="46" rx="4" fill="#EDF4FB" stroke="#B6CBE0" stroke-width="1.2"/>
+<text data-label="true" x="97" y="244" font-size="19" fill="#356D9F" font-weight="600" font-family="Helvetica" text-anchor="start">共享上下文 x（只写入一次）</text>
+<text data-label="true" x="97" y="292" font-size="18" fill="#253346" font-weight="600" font-family="Helvetica" text-anchor="start">问题 1 + 各候选项的描述</text>
+<text data-label="true" x="99" y="325" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">c₁₁</text>
+<rect x="139" y="303" width="45" height="30" rx="5" fill="#ECF7F4" stroke="#197C79" stroke-width="0.8"/>
+<text data-label="true" x="161.5" y="324" font-size="18" fill="#197C79" font-weight="600" font-family="Helvetica" text-anchor="middle">[C]</text>
+<text data-label="true" x="201" y="325" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">c₁₂</text>
+<rect x="240" y="303" width="45" height="30" rx="5" fill="#ECF7F4" stroke="#197C79" stroke-width="0.8"/>
+<text data-label="true" x="262.5" y="324" font-size="18" fill="#197C79" font-weight="600" font-family="Helvetica" text-anchor="middle">[C]</text>
+<text data-label="true" x="302" y="324" font-size="24" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">…</text>
+<rect x="348" y="303" width="56" height="30" rx="5" fill="#F3EEF8" stroke="#80619E" stroke-width="0.8"/>
+<text data-label="true" x="376.0" y="324" font-size="18" fill="#80619E" font-weight="600" font-family="Helvetica" text-anchor="middle">[D₁]</text>
+<path d="M83,350 L422,350" fill="none" stroke="#E0E6ED" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text data-label="true" x="97" y="380" font-size="18" fill="#253346" font-weight="600" font-family="Helvetica" text-anchor="start">问题 2 + 各候选项的描述</text>
+<text data-label="true" x="99" y="414" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">c₂₁</text>
+<rect x="139" y="392" width="45" height="30" rx="5" fill="#ECF7F4" stroke="#197C79" stroke-width="0.8"/>
+<text data-label="true" x="161.5" y="413" font-size="18" fill="#197C79" font-weight="600" font-family="Helvetica" text-anchor="middle">[C]</text>
+<text data-label="true" x="201" y="414" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">c₂₂</text>
+<rect x="240" y="392" width="45" height="30" rx="5" fill="#ECF7F4" stroke="#197C79" stroke-width="0.8"/>
+<text data-label="true" x="262.5" y="413" font-size="18" fill="#197C79" font-weight="600" font-family="Helvetica" text-anchor="middle">[C]</text>
+<text data-label="true" x="302" y="413" font-size="24" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">…</text>
+<rect x="348" y="392" width="56" height="30" rx="5" fill="#F3EEF8" stroke="#80619E" stroke-width="0.8"/>
+<text data-label="true" x="376.0" y="413" font-size="18" fill="#80619E" font-weight="600" font-family="Helvetica" text-anchor="middle">[D₂]</text>
+<text data-label="true" x="251" y="457" font-size="17" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">…  一条 token 序列容纳 Q 道题</text>
+<path d="M437,336 L486,336" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="486.0,336.0 477.0,332.0 477.0,340.0" fill="#647286"/>
+<text data-label="true" x="511" y="183" font-size="22" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">共享表示</text>
+<rect x="486" y="238" width="316" height="201" rx="7" fill="#EDF4FB" stroke="#356D9F" stroke-width="1.2"/>
+<rect x="496" y="228" width="296" height="201" rx="7" fill="#EDF4FB" stroke="#356D9F" stroke-width="1.2"/>
+<rect x="506" y="218" width="276" height="201" rx="7" fill="#F6FAFE" stroke="#356D9F" stroke-width="1.2"/>
+<text data-label="true" x="644" y="258" font-size="26" fill="#356D9F" font-weight="700" font-family="Helvetica" text-anchor="middle">Qwen3.5</text>
+<text data-label="true" x="644" y="289" font-size="21" fill="#356D9F" font-weight="600" font-family="Helvetica" text-anchor="middle">文本主干</text>
+<path d="M526,308 L762,308" fill="none" stroke="#C9D9E8" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text data-label="true" x="644" y="338" font-size="19" fill="#253346" font-weight="400" font-family="Helvetica" text-anchor="middle">Token 嵌入</text>
+<text data-label="true" x="644" y="370" font-size="19" fill="#253346" font-weight="400" font-family="Helvetica" text-anchor="middle">混合注意力解码层 × L</text>
+<rect x="556" y="390" width="176" height="30" rx="5" fill="#FFF7E9" stroke="#996D2F" stroke-width="0.8"/>
+<text data-label="true" x="644.0" y="411" font-size="17" fill="#996D2F" font-weight="600" font-family="Helvetica" text-anchor="middle">LoRA（训练时）</text>
+<text data-label="true" x="644" y="472" font-size="18" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">分层注意力掩码 → (b)</text>
+<path d="M803,336 L850,336" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="850.0,336.0 841.0,332.0 841.0,340.0" fill="#647286"/>
+<text data-label="true" x="855" y="183" font-size="22" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">标记位置的隐状态</text>
+<rect x="850" y="218" width="230" height="240" rx="7" fill="#FCFDFE" stroke="#CBD4DE" stroke-width="1.2"/>
+<text data-label="true" x="965" y="252" font-size="24" fill="#617084" font-weight="400" font-family="Times New Roman" text-anchor="middle">H ∈ ℝᴮ×ᵀ×ᴰ</text>
+<rect x="872" y="284" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="885" y="284" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="898" y="284" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="911" y="284" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="924" y="284" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<text data-label="true" x="957" y="305" font-size="22" fill="#197C79" font-weight="400" font-family="Times New Roman" text-anchor="start">hⱼ₁, …, hⱼKⱼ</text>
+<text data-label="true" x="872" y="337" font-size="17" fill="#197C79" font-weight="400" font-family="Helvetica" text-anchor="start">候选标记 [C] 位置</text>
+<rect x="872" y="371" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="885" y="371" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="898" y="371" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="911" y="371" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="924" y="371" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<text data-label="true" x="957" y="392" font-size="24" fill="#80619E" font-weight="400" font-family="Times New Roman" text-anchor="start">hⱼᴰ</text>
+<text data-label="true" x="872" y="426" font-size="17" fill="#80619E" font-weight="400" font-family="Helvetica" text-anchor="start">决策标记 [Dⱼ] 位置</text>
+<path d="M1080,336 L1129,336" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="1129.0,336.0 1120.0,332.0 1120.0,340.0" fill="#647286"/>
+<text data-label="true" x="1135" y="183" font-size="22" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">共享决策头</text>
+<rect x="1129" y="275" width="228" height="122" rx="7" fill="#ECF7F4" stroke="#197C79" stroke-width="1.2"/>
+<text data-label="true" x="1243" y="316" font-size="24" fill="#197C79" font-weight="700" font-family="Helvetica" text-anchor="middle">PointerHead</text>
+<text data-label="true" x="1243" y="350" font-size="20" fill="#253346" font-weight="400" font-family="Helvetica" text-anchor="middle">逐候选打分</text>
+<text data-label="true" x="1243" y="379" font-size="17" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">d = 256  ·  细节 → (c)</text>
+<text data-label="true" x="1243" y="437" font-size="23" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="middle">zⱼ = [zⱼ₁, …, zⱼKⱼ]</text>
+<path d="M1357,336 L1406,336" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="1406.0,336.0 1397.0,332.0 1397.0,340.0" fill="#647286"/>
+<text data-label="true" x="1411" y="183" font-size="22" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">逐题候选概率</text>
+<rect x="1406" y="218" width="326" height="240" rx="7" fill="#FCFDFE" stroke="#CBD4DE" stroke-width="1.2"/>
+<text data-label="true" x="1569" y="256" font-size="20" fill="#356D9F" font-weight="600" font-family="Helvetica" text-anchor="middle">有效候选掩码 + Softmax</text>
+<text data-label="true" x="1569" y="292" font-size="25" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="middle">pⱼ = softmax(zⱼ / τ)</text>
+<text data-label="true" x="1429" y="336" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">pⱼ1</text>
+<rect x="1480" y="317" width="205" height="21" rx="3" fill="#EFF3F7" stroke="none" stroke-width="1.2"/>
+<rect x="1480" y="317" width="48" height="21" rx="3" fill="#A8BFD3" stroke="none" stroke-width="1.2"/>
+<text data-label="true" x="1429" y="371" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">pⱼ2</text>
+<rect x="1480" y="352" width="205" height="21" rx="3" fill="#EFF3F7" stroke="none" stroke-width="1.2"/>
+<rect x="1480" y="352" width="162" height="21" rx="3" fill="#356D9F" stroke="none" stroke-width="1.2"/>
+<text data-label="true" x="1429" y="406" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">pⱼ3</text>
+<rect x="1480" y="387" width="205" height="21" rx="3" fill="#EFF3F7" stroke="none" stroke-width="1.2"/>
+<rect x="1480" y="387" width="48" height="21" rx="3" fill="#A8BFD3" stroke="none" stroke-width="1.2"/>
+<text data-label="true" x="1569" y="438" font-size="16" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">示意分布；j = 1, …, Q</text>
+<text data-label="true" x="67" y="519" font-size="19" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">同一个指针头处理 choice、是 / 否和有序评分候选；每道题使用各自的候选集合 Kⱼ。</text>
+<rect x="35" y="575" width="650" height="415" rx="9" fill="white" stroke="#D6DDE5" stroke-width="1.2"/>
+<text data-label="true" x="57" y="611" font-size="24" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">(b)  按层类型设置注意力掩码</text>
+<text data-label="true" x="193" y="656" font-size="22" fill="#356D9F" font-weight="600" font-family="Helvetica" text-anchor="middle">全注意力层</text>
+<text data-label="true" x="498" y="656" font-size="22" fill="#253346" font-weight="600" font-family="Helvetica" text-anchor="middle">线性注意力层</text>
+<rect x="113" y="688" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="113" y="708" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="708" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="708" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="708" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="708" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="708" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="708" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="708" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="113" y="728" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="728" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="728" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="728" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="728" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="728" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="728" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="728" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="113" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="748" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="748" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="748" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="748" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="113" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="768" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="768" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="768" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="113" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="788" width="19" height="19" rx="0" fill="#BAD8EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="788" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="113" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="808" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="113" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="133" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="153" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="173" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="193" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="213" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="233" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="253" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="112" y="687" width="161" height="161" rx="0" fill="none" stroke="#93A3B5" stroke-width="0.8"/>
+<rect x="132" y="707" width="121" height="121" rx="0" fill="none" stroke="#356D9F" stroke-width="1" stroke-dasharray="4 3"/>
+<text data-label="true" x="193" y="679" font-size="15" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">键 →</text>
+<text data-label="true" x="98" y="778" font-size="17" fill="#617084" font-weight="400" font-family="Times New Roman" text-anchor="middle">Q</text>
+<rect x="418" y="688" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="688" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="418" y="708" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="708" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="708" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="708" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="708" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="708" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="708" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="708" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="418" y="728" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="728" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="728" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="728" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="728" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="728" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="728" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="728" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="418" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="748" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="748" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="748" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="748" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="748" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="418" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="768" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="768" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="768" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="768" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="418" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="788" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="788" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="788" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="418" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="808" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="808" width="19" height="19" rx="0" fill="#FFFFFF" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="418" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="438" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="458" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="478" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="498" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="518" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="538" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="558" y="828" width="19" height="19" rx="0" fill="#D9E1EA" stroke="#E2E7ED" stroke-width="0.5"/>
+<rect x="417" y="687" width="161" height="161" rx="0" fill="none" stroke="#93A3B5" stroke-width="0.8"/>
+<text data-label="true" x="498" y="679" font-size="15" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">键 →</text>
+<text data-label="true" x="403" y="778" font-size="17" fill="#617084" font-weight="400" font-family="Times New Roman" text-anchor="middle">Q</text>
+<text data-label="true" x="193" y="878" font-size="18" fill="#356D9F" font-weight="400" font-family="Helvetica" text-anchor="middle">联合提示区间内双向可见</text>
+<text data-label="true" x="498" y="878" font-size="18" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">Gated DeltaNet 保持因果</text>
+<rect x="80" y="905" width="16" height="16" rx="1" fill="#D9E1EA" stroke="none" stroke-width="1.2"/>
+<text data-label="true" x="104" y="919" font-size="17" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">原有因果连接</text>
+<rect x="284" y="905" width="16" height="16" rx="1" fill="#BAD8EA" stroke="none" stroke-width="1.2"/>
+<text data-label="true" x="308" y="919" font-size="17" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">新增提示区间连接</text>
+<rect x="526" y="905" width="16" height="16" rx="1" fill="white" stroke="#B5C0CC" stroke-width="1.2"/>
+<text data-label="true" x="550" y="919" font-size="17" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">不可见</text>
+<text data-label="true" x="67" y="952" font-size="18" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">提示区间 = 上下文 + 全部问题、候选项及标记。</text>
+<text data-label="true" x="67" y="977" font-size="16" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">行：查询；列：键。区间外的聊天前后缀仍遵循因果规则。</text>
+<rect x="715" y="575" width="1050" height="415" rx="9" fill="white" stroke="#D6DDE5" stroke-width="1.2"/>
+<text data-label="true" x="737" y="611" font-size="24" fill="#253346" font-weight="700" font-family="Helvetica" text-anchor="start">(c)  PointerHead：所有题目共享同一套打分参数</text>
+<text data-label="true" x="747" y="653" font-size="19" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">读取标记隐状态 → 共享 LayerNorm → 两路独立线性投影</text>
+<rect x="748" y="685" width="168" height="66" rx="7" fill="#ECF7F4" stroke="#197C79" stroke-width="1.2"/>
+<text data-label="true" x="832" y="713" font-size="18" fill="#197C79" font-weight="600" font-family="Helvetica" text-anchor="middle">候选隐状态</text>
+<text data-label="true" x="832" y="740" font-size="22" fill="#197C79" font-weight="400" font-family="Times New Roman" text-anchor="middle">hⱼₖ ∈ ℝᴰ</text>
+<path d="M916,718 L957,718" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="957.0,718.0 948.0,714.0 948.0,722.0" fill="#647286"/>
+<rect x="957" y="685" width="216" height="66" rx="7" fill="#ECF7F4" stroke="#197C79" stroke-width="1.2"/>
+<text data-label="true" x="1065" y="714" font-size="19" fill="#197C79" font-weight="600" font-family="Helvetica" text-anchor="middle">LayerNorm + 线性层</text>
+<text data-label="true" x="1065" y="741" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="middle">kⱼₖ = Wc LN(hⱼₖ)</text>
+<path d="M1173,718 L1211,718" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="1211.0,718.0 1202.0,714.0 1202.0,722.0" fill="#647286"/>
+<rect x="1219" y="706" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="1232" y="706" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="1245" y="706" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="1258" y="706" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<rect x="1271" y="706" width="11" height="25" rx="1" fill="#D7EEE6" stroke="#197C79" stroke-width="0.7"/>
+<text data-label="true" x="1250" y="762" font-size="22" fill="#197C79" font-weight="400" font-family="Times New Roman" text-anchor="middle">kⱼₖ ∈ ℝᵈ</text>
+<rect x="748" y="798" width="168" height="66" rx="7" fill="#F3EEF8" stroke="#80619E" stroke-width="1.2"/>
+<text data-label="true" x="832" y="826" font-size="18" fill="#80619E" font-weight="600" font-family="Helvetica" text-anchor="middle">决策隐状态</text>
+<text data-label="true" x="832" y="853" font-size="22" fill="#80619E" font-weight="400" font-family="Times New Roman" text-anchor="middle">hⱼᴰ ∈ ℝᴰ</text>
+<path d="M916,831 L957,831" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="957.0,831.0 948.0,827.0 948.0,835.0" fill="#647286"/>
+<rect x="957" y="798" width="216" height="66" rx="7" fill="#F3EEF8" stroke="#80619E" stroke-width="1.2"/>
+<text data-label="true" x="1065" y="827" font-size="19" fill="#80619E" font-weight="600" font-family="Helvetica" text-anchor="middle">LayerNorm + 线性层</text>
+<text data-label="true" x="1065" y="854" font-size="22" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="middle">qⱼ = Wq LN(hⱼᴰ)</text>
+<path d="M1173,831 L1211,831" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="1211.0,831.0 1202.0,827.0 1202.0,835.0" fill="#647286"/>
+<rect x="1219" y="819" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="1232" y="819" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="1245" y="819" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="1258" y="819" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<rect x="1271" y="819" width="11" height="25" rx="1" fill="#E5DAF1" stroke="#80619E" stroke-width="0.7"/>
+<text data-label="true" x="1250" y="875" font-size="22" fill="#80619E" font-weight="400" font-family="Times New Roman" text-anchor="middle">qⱼ ∈ ℝᵈ</text>
+<path d="M1286,718 L1321,718 L1321,761 L1361,761" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="1361.0,761.0 1352.0,757.0 1352.0,765.0" fill="#647286"/>
+<path d="M1286,831 L1321,831 L1321,798 L1361,798" fill="none" stroke="#647286" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="1361.0,798.0 1352.0,794.0 1352.0,802.0" fill="#647286"/>
+<rect x="1361" y="714" width="369" height="127" rx="7" fill="#F6F9FC" stroke="#8A9BAE" stroke-width="1.2"/>
+<text data-label="true" x="1545" y="747" font-size="22" fill="#253346" font-weight="600" font-family="Helvetica" text-anchor="middle">缩放点积</text>
+<text data-label="true" x="1545" y="780" font-size="24" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">+</text>
+<text data-label="true" x="1545" y="810" font-size="21" fill="#253346" font-weight="600" font-family="Helvetica" text-anchor="middle">候选线性先验项</text>
+<text data-label="true" x="1545" y="875" font-size="18" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="middle">Float32 打分；d = 256</text>
+<path d="M747,899 L1732,899" fill="none" stroke="#DFE5EC" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text data-label="true" x="747" y="938" font-size="29" fill="#253346" font-weight="400" font-family="Times New Roman" text-anchor="start">zⱼₖ = kⱼₖᵀ qⱼ / √d  +  wᵀ kⱼₖ + b</text>
+<text data-label="true" x="1729" y="936" font-size="21" fill="#617084" font-weight="400" font-family="Times New Roman" text-anchor="end">k = 1, …, Kⱼ</text>
+<text data-label="true" x="747" y="975" font-size="17" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">两路投影均含偏置；候选补齐位置的无效 logit 设为 −10⁴。</text>
+<text data-label="true" x="37" y="1024" font-size="17" fill="#197C79" font-weight="400" font-family="Courier New" text-anchor="start">[C] = &lt;|object_ref_end|&gt;</text>
+<text data-label="true" x="400" y="1024" font-size="17" fill="#80619E" font-weight="400" font-family="Courier New" text-anchor="start">[Dⱼ] = &lt;|object_ref_start|&gt;</text>
+<text data-label="true" x="833" y="1024" font-size="17" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">τ：配置的温度参数  ·  d：指针投影维度  ·  D：主干隐状态维度</text>
+<text data-label="true" x="37" y="1056" font-size="16" fill="#617084" font-weight="400" font-family="Helvetica" text-anchor="start">实现对应：DecisionProcessor.pointer_ids → DecisionModel.forward → PointerHead → candidate_probabilities</text>
+</svg>
