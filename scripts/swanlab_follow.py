@@ -19,6 +19,7 @@ overwrites the log; the follower then continues after the last step it recorded.
 """
 import argparse
 import calendar
+import itertools
 import json
 import os
 import time
@@ -48,6 +49,7 @@ def events(path, follow, poll, stop):
                 if not line or not line.endswith("\n"):
                     break
                 position = stream.tell()
+                line = line.replace("\0", "")     # a log truncated under a live writer has a NUL-filled gap
                 if line.startswith("{"):
                     try:
                         yield json.loads(line)
@@ -98,6 +100,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run", required=True, help="training output directory (config.json, latest_metrics.json)")
     parser.add_argument("--log", required=True, help="the training log scripts/train.py wrote to")
+    parser.add_argument("--prefix-log", nargs="*", default=[],
+                        help="logs read once before --log, e.g. events recovered after the log was overwritten")
     parser.add_argument("--project", default="chinese-decision")
     parser.add_argument("--name", help="experiment name (default: the run directory name)")
     parser.add_argument("--mode", default="offline", choices=("offline", "local", "online", "disabled"))
@@ -116,7 +120,9 @@ def main():
     last_step, validated, done = -1, set(), [False]
     has_history = (run / "metrics_history.jsonl").exists() or bool(config.get("val_per_source"))
     started = None
-    for event in events(args.log, args.follow, args.poll, lambda: done[0]):
+    stream = itertools.chain(*(events(path, False, args.poll, lambda: True) for path in args.prefix_log),
+                             events(args.log, args.follow, args.poll, lambda: done[0]))
+    for event in stream:
         kind = event.get("event")
         if kind == "step":
             step = event["step"]

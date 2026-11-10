@@ -43,6 +43,23 @@ def pools(records, size):
         yield pool
 
 
+def encode_records(pool, processor):
+    """Encoded rows of a pool in the model's readout layout: letter prompts, or pointer sequences (one
+    question each, candidates in their original order)."""
+    if processor.pointer is None:
+        return encode_pool(pool, processor.tokenizer, processor.max_length)
+    rows = []
+    for record in pool:
+        example = record["example"]
+        row = processor.encode_example(example)  # no rng: original candidate order
+        if row is None:
+            raise ValueError(f"overlength benchmark case {example.case_id}; no truncation")
+        row.update(option_keys=[key for key, _ in example.options], parent_id=record["parent_id"],
+                   task=record["task"], line=record["line"])
+        rows.append(row)
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", required=True, help="exported model directory")
@@ -65,7 +82,9 @@ def main():
     temperature = model.config.temperature if args.temperature == "model" else float(args.temperature)
     expected = sum(args.limit_per_domain or entry["decisions"] for entry in manifest["domains"].values())
     metadata = {"dataset": "bbldCVer-hf/CJ-Bench", "manifest_sha256": sha256(data / "MANIFEST.json"),
-                "model": str(args.model), "model_name": model.config.model_name, "prompt_version": PROMPT_VERSION,
+                "model": str(args.model), "model_name": model.config.model_name,
+                "prompt_version": processor.config.prompt_version if processor.pointer is not None else PROMPT_VERSION,
+                "readout": "pointer" if processor.pointer is not None else "letters",
                 "candidate_order": "original; no permutation", "temperature": temperature,
                 "calibration": "no fitting on test labels", "max_length": processor.max_length,
                 "length_policy": "fail on overflow; no truncation", "ece_bins": 15,
@@ -82,7 +101,7 @@ def main():
             if args.limit_per_domain:
                 records = (r for _, r in zip(range(args.limit_per_domain), records))
             for pool in pools(records, args.pool_size):
-                rows = encode_pool(pool, processor.tokenizer, processor.max_length)
+                rows = encode_records(pool, processor)
                 for batch in shape_batches(sorted(rows, key=lambda row: len(row["input_ids"])),
                                            args.batch_size, args.token_budget):
                     with torch.inference_mode():
@@ -95,7 +114,7 @@ def main():
                         norm = math.log(sum(math.exp(x) for x in logp))
                         logp = [x - norm for x in logp]
                         metrics.add(row, logp)
-                        result = {k: v for k, v in row.items() if k != "input_ids"}
+                        result = {k: v for k, v in row.items() if k not in ("input_ids", "span", "questions")}
                         result["log_probabilities"], result["probabilities"] = logp, [math.exp(x) for x in logp]
                         predictions.write(json.dumps(result, ensure_ascii=False) + "\n")
                         counts[row["domain"]] += 1
