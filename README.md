@@ -13,10 +13,12 @@
 [![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--4b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)
 [![GGUF](https://img.shields.io/badge/GGUF-chinese--decision--4b--gguf-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf)
 [![chinese-decision-unified-4b](https://img.shields.io/badge/Hugging%20Face-chinese--decision--unified--4b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-4b)
+[![chinese-decision-pointer-4b](https://img.shields.io/badge/Hugging%20Face-chinese--decision--pointer--4b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-pointer-4b)
+[![Decision Index](https://img.shields.io/badge/Decision%20Index-4B%20%E6%A1%A3%E7%AC%AC%204-ffd21e)](https://huggingface.co/spaces/multimodalart/jev-decision-index)
 [![CJ-IE](https://img.shields.io/badge/Data-CJ--IE-orange)](https://huggingface.co/datasets/quincyqiang/CJ-IE)
 [![Decision Studio](https://img.shields.io/badge/Platform-Decision%20Studio-black?logo=github)](https://github.com/yanqiangmiffy/chinese-decision-studio)
 
-📄 论文：[Chinese Decision: A Family of Language Models for Single-Pass Probabilistic Decision-Making](https://arxiv.org/abs/2610.23170)（arXiv:2610.23170，v2）
+📄 论文：[Chinese Decision: A Family of Language Models for Single-Pass Probabilistic Decision-Making](https://arxiv.org/abs/2610.23170)（arXiv:2610.23170，v3）
 
 中文 | [English](README_EN.md)
 
@@ -30,10 +32,11 @@
 
 很多 AI 调用本质上是在有限选项中做判断——意图识别、工单分流、内容审核、数据打标、给模型输出打分、智能体的下一步动作选择等。用生成式大模型回答这类问题又慢又贵，且输出需要再解析。决策模型直接返回结构化的概率分布，程序拿到即可按阈值使用。
 
-模型分两个系列，都基于 [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)、[Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) 与 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) 做 LoRA 微调：
+模型分三个系列，都基于 [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B)、[Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) 与 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) 做 LoRA 微调：
 
 - **纯决策模型**（`chinese-decision-{0.8b,2b,4b}`，及其 `-gguf` 版本）：在 1,300 万条中文决策数据 [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset) 上训练，只做决策。
 - **统一模型**（`chinese-decision-unified-{0.8b,2b,4b}`）：同一份权重在决策之外多一种读出，做类型化信息抽取（命名实体、关系、事件论元），额外使用抽取数据 [CJ-IE](https://huggingface.co/datasets/quincyqiang/CJ-IE)。
+- **指针读出模型**（`chinese-decision-pointer-4b`）：用指针头代替 A–Z 字母读出，候选数不受 26 个字母限制，同一状态下的多个问题在一条序列里一次作答；面向 [Decision Index](https://huggingface.co/spaces/multimodalart/jev-decision-index) 通用决策榜单训练。
 
 方法改编自 [n4ze3m/hmm](https://github.com/n4ze3m/hmm)，并在 [Chinese-Jev](https://arxiv.org/abs/2609.36965) 提出的 CJ-Bench 上与其论文结果对比。方法、结果与分析见论文 [arXiv:2610.23170](https://arxiv.org/abs/2610.23170)。
 
@@ -50,7 +53,8 @@
 
 ## 最新动态
 
-- 🧬 **2026-10-31**：发布 **chinese-decision-unified-4b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-4b)）。CJ-Bench 全量 ACC **86.86%**、Macro **83.85%**，高于 chinese-decision-4b（85.97% / 81.92%），法律 **82.44%**；CJ-IE 测试集抽取 micro F1 **68.9**（chinese-decision-unified-2b 为 66.0）。
+- 🏆 **2026-11-12**：**chinese-decision-pointer-4b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-pointer-4b)）在 [Jev Decision Index 0.4.1](https://huggingface.co/spaces/multimodalart/jev-decision-index) 榜单出分：Full score **53.96**，在 147 个 4.9B 以下的提交中排**第 4**（不计参考模型 Jev 1.14），与 Cerno 4B v1.2（53.88）并列总榜第 19 档，是该档得分最高的 LoRA / 读出头方案（其余前列均为全量微调）；公开题集 0.3 得分 **61.69**。榜单方复跑提交结果，831 条抽查的决策一致率为 99.60%。详见 [Decision Index 榜单](#decision-index-榜单)。
+- 📄 **2026-11-06**：技术报告 **[arXiv:2610.23170](https://arxiv.org/abs/2610.23170)** 更新到 v3（47 页）：补入统一模型 chinese-decision-unified-{0.8b,2b,4b}（同一份权重内的类型化抽取读出）、CJ-IE 抽取数据，以及保留决策能力的代价分析。
 - 🧬 **2026-10-31**：发布 **chinese-decision-unified-4b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-4b)）。CJ-Bench 全量 ACC **86.86%**、Macro **83.85%**，高于 chinese-decision-4b（85.97% / 81.92%），法律 **82.44%**；CJ-IE 测试集抽取 micro F1 **68.9**（chinese-decision-unified-2b 为 66.0）。
 - 🧬 **2026-10-27**：发布 **chinese-decision-unified-2b**（🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b)）。CJ-Bench 全量 ACC **85.00%**（chinese-decision-2b 为 84.11%，同为 T = 1），CJ-IE 测试集抽取 micro F1 **66.0**（chinese-decision-unified-0.8b 为 63.1）。
 - 🗂️ **2026-10-26**：公开抽取训练数据 **CJ-IE**（🤗 [Hugging Face](https://huggingface.co/datasets/quincyqiang/CJ-IE) · [ModelScope](https://www.modelscope.cn/datasets/quincyqiang/CJ-IE)）：把公开的中文 NER、关系和事件语料整理成统一格式（类型带定义），并派生选择 / 判断题。部分来源为非商业许可，使用前请阅读[数据卡](docs/DATASET_CARD_CJ_IE.md)。
@@ -77,8 +81,9 @@
 | chinese-decision-unified-0.8b | 统一 | Qwen3.5-0.8B / CE + RLCD，决策与抽取联合训练 | BF16 / 1.52 GB | 1.1326（仅决策） | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [模型卡](docs/MODEL_CARD_UNIFIED_0_8B.md) |
 | chinese-decision-unified-2b | 统一 | Qwen3.5-2B / CE + RLCD，决策与抽取联合训练 | BF16 / 3.79 GB | 1.0617（仅决策） | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) | [模型卡](docs/MODEL_CARD_UNIFIED_2B.md) |
 | chinese-decision-unified-4b | 统一 | Qwen3.5-4B / CE + RLCD，决策与抽取联合训练 | BF16 / 8.44 GB | 1.0986（仅决策） | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-4b) | [模型卡](docs/MODEL_CARD_UNIFIED_4B.md) |
+| chinese-decision-pointer-4b | 指针读出 | Qwen3.5-4B / CE + RLCD，decision-mix 公开数据 + CJ-Dataset，指针头 | BF16 / 8.42 GB | 1.537998 | [HF](https://huggingface.co/quincyqiang/chinese-decision-pointer-4b) | [模型卡](docs/MODEL_CARD_POINTER_4B.md) |
 
-所有发布模型都已在 CJ-Bench 全量 307,900 条上完成评测（见[评测结果](#评测结果)），全部支持 16384 tokens；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多时用 [`/v1/tournament`](#http-服务) 分组淘汰；大小为十进制 GB，不是运行内存。
+除 chinese-decision-pointer-4b 外，所有发布模型都已在 CJ-Bench 全量 307,900 条上完成评测（见[评测结果](#评测结果)），全部支持 16384 tokens；单题 2–26 个候选（训练数据覆盖 2–16 个），类别更多时用 [`/v1/tournament`](#http-服务) 分组淘汰；chinese-decision-pointer-4b 单题最多 4096 个候选，只能用 PyTorch 运行（没有 GGUF），评测见 [Decision Index 榜单](#decision-index-榜单)。大小为十进制 GB，不是运行内存。
 
 **纯决策模型与统一模型的区别**
 
@@ -315,6 +320,23 @@ chinese-decision-2b 相对 0.8B 在 12 个组合中有 9 个提升，法律判�
 | military_ner（类型没有说明） | 0.0 | 0.0 | 3.0 |
 
 抽取偏保守，精确率明显高于召回率，来源之间差别很大。35 个来源里 chinese-decision-unified-2b 有 30 个比 chinese-decision-unified-0.8b 好，chinese-decision-unified-4b 有 33 个比 chinese-decision-unified-2b 好（CMeIE 和 IMCS21 略低）；类型没有说明的 `military_ner` 三个模型都几乎抽不出来。完整的逐来源、逐类型指标见各模型卡。
+
+### Decision Index 榜单
+
+[Jev Decision Index](https://huggingface.co/spaces/multimodalart/jev-decision-index) 是 Jev 决策模型的开源复现榜单，按 Full score 排名：与 37 个公开基准考同类技能的私有题，加上一组新领域的私有任务，均由榜单方在 1 × NVIDIA RTX PRO 6000 上复测；公开题集分数单独列出。下表为 0.4.1 版（2026-11-11 更新，共 297 个模型）中 chinese-decision-pointer-4b 的结果。
+
+| 指标 | 分数 |
+|---|---:|
+| **Full score** | **53.96** |
+| 私有题：同类技能 | 56.32 |
+| 私有题：新领域 | 39.18 |
+| 公开题集 0.3（技能分，机会校正） | 61.69（raw 71.01） |
+| 总榜名次 | 第 19 档（与 Cerno 4B v1.2 并列） |
+| 4.9B 以下（147 个提交） | **第 4**，不计参考模型 Jev 1.14 |
+
+- 4.9B 以下排在前面的三个模型（KnowLine 4B Gen5.5 55.99、StartLux-Decision v1.1 4B 54.80、Perplexity Decider Flash v1.2 (4B) 54.29）都是全量微调；chinese-decision-pointer-4b 只训练 LoRA 和一个 256 维指针头，是该档最高的 LoRA / 读出头方案。
+- 公开题集 61.69 与私有题 53.96 有差距，新领域私有任务（39.18）是主要短板。训练题来自公开数据集的训练划分、CJ-Dataset 和自写生成器，并按 13 个词单元的片段对公开题去污染。
+- 榜单方用作者的服务代码复跑提交结果，831 条抽查的决策一致率为 99.60%（门槛 98.5%）。分领域结果、运行设置和完整输出见[模型卡](docs/MODEL_CARD_POINTER_4B.md)。
 
 ### 推理效率
 

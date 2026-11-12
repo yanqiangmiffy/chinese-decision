@@ -13,10 +13,12 @@
 [![ModelScope](https://img.shields.io/badge/ModelScope-chinese--decision--4b-624aff)](https://modelscope.cn/models/quincyqiang/chinese-decision-4b)
 [![GGUF](https://img.shields.io/badge/GGUF-chinese--decision--4b--gguf-brightgreen)](https://huggingface.co/quincyqiang/chinese-decision-4b-gguf)
 [![chinese-decision-unified-4b](https://img.shields.io/badge/Hugging%20Face-chinese--decision--unified--4b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-unified-4b)
+[![chinese-decision-pointer-4b](https://img.shields.io/badge/Hugging%20Face-chinese--decision--pointer--4b-yellow?logo=huggingface)](https://huggingface.co/quincyqiang/chinese-decision-pointer-4b)
+[![Decision Index](https://img.shields.io/badge/Decision%20Index-%234%20under%205B-ffd21e)](https://huggingface.co/spaces/multimodalart/jev-decision-index)
 [![CJ-IE](https://img.shields.io/badge/Data-CJ--IE-orange)](https://huggingface.co/datasets/quincyqiang/CJ-IE)
 [![Decision Studio](https://img.shields.io/badge/Platform-Decision%20Studio-black?logo=github)](https://github.com/yanqiangmiffy/chinese-decision-studio)
 
-📄 Paper: [Chinese Decision: A Family of Language Models for Single-Pass Probabilistic Decision-Making](https://arxiv.org/abs/2610.23170) (arXiv:2610.23170, v2)
+📄 Paper: [Chinese Decision: A Family of Language Models for Single-Pass Probabilistic Decision-Making](https://arxiv.org/abs/2610.23170) (arXiv:2610.23170, v3)
 
 [中文](README.md) | English
 
@@ -30,10 +32,11 @@
 
 Many AI calls in real software are really judgments over a closed set: intent detection, ticket routing, content moderation, data labeling, grading model outputs, or choosing an agent's next action. Answering these with a generative LLM is slow, expensive, and requires parsing free text. A decision model returns a structured probability distribution that code can threshold directly.
 
-There are two model families, both LoRA fine-tunes of [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B), [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) and [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B):
+There are three model families, all LoRA fine-tunes of [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B), [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) and [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B):
 
 - **Decision-only models** (`chinese-decision-{0.8b,2b,4b}` and their `-gguf` builds): trained on [CJ-Dataset](https://huggingface.co/datasets/bbldCVer-hf/CJ-Dataset), a corpus of 13 million Chinese decisions; they only make decisions.
 - **Unified models** (`chinese-decision-unified-{0.8b,2b,4b}`): the same weight file adds a second readout next to decisions, typed information extraction (named entities, relations, event arguments), trained with the extra extraction data [CJ-IE](https://huggingface.co/datasets/quincyqiang/CJ-IE).
+- **Pointer-readout model** (`chinese-decision-pointer-4b`): a pointer head replaces the A–Z letter readout, so a question is not limited to 26 candidates and all questions about one state are answered in one sequence; trained for the general-purpose [Decision Index](https://huggingface.co/spaces/multimodalart/jev-decision-index) leaderboard.
 
 The method is adapted from [n4ze3m/hmm](https://github.com/n4ze3m/hmm), and results are compared against the [Chinese-Jev](https://arxiv.org/abs/2609.36965) paper on its CJ-Bench benchmark. The method, results and analyses are in the paper, [arXiv:2610.23170](https://arxiv.org/abs/2610.23170).
 
@@ -50,6 +53,8 @@ The method is adapted from [n4ze3m/hmm](https://github.com/n4ze3m/hmm), and resu
 
 ## News
 
+- 🏆 **2026-11-12**: **chinese-decision-pointer-4b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-pointer-4b)) is scored on the [Jev Decision Index 0.4.1](https://huggingface.co/spaces/multimodalart/jev-decision-index) leaderboard: Full score **53.96**, **4th** of 147 submissions under 4.9B (not counting the Jev 1.14 reference), tied with Cerno 4B v1.2 (53.88) in overall tier #19, and the highest LoRA / readout-head entry in that size range (the entries above it are full fine-tunes); **61.69** on the public 0.3 suite. The maintainers re-ran the submission and matched 99.60% of decisions on an 831-row check. See [Decision Index Leaderboard](#decision-index-leaderboard).
+- 📄 **2026-11-06**: The technical report **[arXiv:2610.23170](https://arxiv.org/abs/2610.23170)** was updated to v3 (47 pages): it adds the unified models chinese-decision-unified-{0.8b,2b,4b} (a typed extraction readout in the same weight file), the CJ-IE extraction mixture, and analyses of what retaining decision ability costs.
 - 🧬 **2026-10-31**: Released **chinese-decision-unified-4b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-4b)). Full CJ-Bench ACC **86.86%** and Macro **83.85%**, above chinese-decision-4b (85.97% / 81.92%), legal **82.44%**; extraction micro F1 **68.9** on the CJ-IE test set (chinese-decision-unified-2b: 66.0).
 - 🧬 **2026-10-27**: Released **chinese-decision-unified-2b** (🤗 [Hugging Face](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b)): **85.00%** on the full CJ-Bench (chinese-decision-2b: 84.11%, both at T = 1) and an extraction micro F1 of **66.0** on the CJ-IE test set (chinese-decision-unified-0.8b: 63.1).
 - 🗂️ **2026-10-26**: Published the extraction training data **CJ-IE** (🤗 [Hugging Face](https://huggingface.co/datasets/quincyqiang/CJ-IE) · [ModelScope](https://www.modelscope.cn/datasets/quincyqiang/CJ-IE)): public Chinese NER, relation and event corpora in one format with type definitions, plus derived choice / yes-no questions. Some sources are non-commercial; read the [dataset card](docs/DATASET_CARD_CJ_IE.md) (Chinese) before using it.
@@ -76,8 +81,9 @@ Every model is referred to by its model ID (the Hugging Face / ModelScope reposi
 | chinese-decision-unified-0.8b | Unified | Qwen3.5-0.8B / CE + RLCD, decisions and extraction trained jointly | BF16 / 1.52 GB | 1.1326 (decisions only) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-0.8b) · [ModelScope](https://modelscope.cn/models/quincyqiang/chinese-decision-unified-0.8b) | [card](docs/MODEL_CARD_UNIFIED_0_8B.md) |
 | chinese-decision-unified-2b | Unified | Qwen3.5-2B / CE + RLCD, decisions and extraction trained jointly | BF16 / 3.79 GB | 1.0617 (decisions only) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-2b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-2b) | [card](docs/MODEL_CARD_UNIFIED_2B.md) |
 | chinese-decision-unified-4b | Unified | Qwen3.5-4B / CE + RLCD, decisions and extraction trained jointly | BF16 / 8.44 GB | 1.0986 (decisions only) | [HF](https://huggingface.co/quincyqiang/chinese-decision-unified-4b) · [ModelScope](https://www.modelscope.cn/models/quincyqiang/chinese-decision-unified-4b) | [card](docs/MODEL_CARD_UNIFIED_4B.md) (Chinese) |
+| chinese-decision-pointer-4b | Pointer readout | Qwen3.5-4B / CE + RLCD, decision-mix public data + CJ-Dataset, pointer head | BF16 / 8.42 GB | 1.537998 | [HF](https://huggingface.co/quincyqiang/chinese-decision-pointer-4b) | [card](docs/MODEL_CARD_POINTER_4B.md) (Chinese) |
 
-Every released model has full CJ-Bench results on all 307,900 decisions (see [Evaluation](#evaluation)) and supports 16,384 input tokens; one question holds 2–26 candidates (training covers 2–16), and larger `choice` questions go through [`/v1/tournament`](#http-server). Sizes are decimal GB, not runtime memory. Model cards are in Chinese.
+Every released model except chinese-decision-pointer-4b has full CJ-Bench results on all 307,900 decisions (see [Evaluation](#evaluation)) and supports 16,384 input tokens; one question holds 2–26 candidates (training covers 2–16), and larger `choice` questions go through [`/v1/tournament`](#http-server). chinese-decision-pointer-4b takes up to 4096 candidates per question, runs on PyTorch only (no GGUF), and is evaluated on the [Decision Index Leaderboard](#decision-index-leaderboard). Sizes are decimal GB, not runtime memory. Model cards are in Chinese.
 
 **Decision-only vs. unified**
 
@@ -314,6 +320,23 @@ Unified models only. The CJ-IE test set is built from the official dev / test sp
 | military_ner (types without descriptions) | 0.0 | 0.0 | 3.0 |
 
 Extraction is conservative, with precision well above recall, and varies a lot by source. chinese-decision-unified-2b beats chinese-decision-unified-0.8b on 30 of the 35 sources, and chinese-decision-unified-4b beats chinese-decision-unified-2b on 33 (CMeIE and IMCS21 are slightly lower); `military_ner`, whose types have no description, stays near 0 for all three. Complete per-source and per-type metrics are in the model cards.
+
+### Decision Index Leaderboard
+
+The [Jev Decision Index](https://huggingface.co/spaces/multimodalart/jev-decision-index) ranks open reproductions of Jev's decision model by a Full score: private tests of the same skills as 37 public benchmarks plus a set of private tasks from new domains, all re-run by the maintainers on 1 × NVIDIA RTX PRO 6000; public-suite scores are shown alongside. Results of chinese-decision-pointer-4b in edition 0.4.1 (updated 2026-11-11, 297 models):
+
+| Metric | Score |
+|---|---:|
+| **Full score** | **53.96** |
+| Private: same skills | 56.32 |
+| Private: new domains | 39.18 |
+| Public 0.3 suite (chance-corrected skill) | 61.69 (raw 71.01) |
+| Overall rank | tier #19 (tied with Cerno 4B v1.2) |
+| Under 4.9B (147 submissions) | **4th**, not counting the Jev 1.14 reference |
+
+- The three models above it under 4.9B (KnowLine 4B Gen5.5 55.99, StartLux-Decision v1.1 4B 54.80, Perplexity Decider Flash v1.2 (4B) 54.29) are full fine-tunes; chinese-decision-pointer-4b trains only a LoRA and a 256-dimensional pointer head, the highest LoRA / readout-head entry in that size range.
+- The gap between the public suite (61.69) and the Full score (53.96) comes mostly from the new-domain private tasks (39.18). Training questions come from the train splits of public datasets, CJ-Dataset and our own generators, decontaminated against the public rows by 13-unit word n-grams.
+- The maintainers re-ran the submission with the author's serving code; 99.60% of decisions matched on an 831-row check (bar 98.5%). Per-area scores, run settings and full outputs are in the [model card](docs/MODEL_CARD_POINTER_4B.md) (Chinese).
 
 ### Inference Efficiency
 

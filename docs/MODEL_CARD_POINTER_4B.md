@@ -20,9 +20,14 @@ library_name: transformers
 
 **一次前向，为任意数量的候选项直接给出概率的决策模型（指针读出）。**
 
-> A decision model fine-tuned from Qwen3.5-4B. Given a state, one or more questions and their candidates, it returns a calibrated probability for every candidate in one forward pass, with no generated text. Unlike the letter readout of [chinese-decision-4b](https://huggingface.co/quincyqiang/chinese-decision-4b), a pointer head scores a marker placed after each candidate, so there is no 26-option limit and all questions about one state are answered in the same sequence. On the public Decision Index 0.3 suite it scores **61.69** (140,178 requests, complete).
+> A decision model fine-tuned from Qwen3.5-4B. Given a state, one or more questions and their candidates, it returns a calibrated probability for every candidate in one forward pass, with no generated text. Unlike the letter readout of [chinese-decision-4b](https://huggingface.co/quincyqiang/chinese-decision-4b), a pointer head scores a marker placed after each candidate, so there is no 26-option limit and all questions about one state are answered in the same sequence. On the [Jev Decision Index 0.4.1](https://huggingface.co/spaces/multimodalart/jev-decision-index) leaderboard it has a Full score of **53.96**, 4th of 147 submissions under 4.9B (not counting the Jev 1.14 reference) and the highest LoRA / readout-head entry in that range; on the public 0.3 suite it scores **61.69** (140,178 requests, complete).
 
-[代码](https://github.com/yanqiangmiffy/chinese-decision/tree/c16450b) · [评测结果](https://huggingface.co/datasets/quincyqiang/chinese-decision-index-results/tree/main/runs/chinese-decision-pointer-4b) · [Decision Index](https://github.com/apolinario/decision-index) · [字母读出版 4B](https://huggingface.co/quincyqiang/chinese-decision-4b)
+[代码](https://github.com/yanqiangmiffy/chinese-decision/tree/c16450b) · [榜单](https://huggingface.co/spaces/multimodalart/jev-decision-index) · [评测结果](https://huggingface.co/datasets/quincyqiang/chinese-decision-index-results/tree/main/runs/chinese-decision-pointer-4b) · [Decision Index](https://github.com/apolinario/decision-index) · [字母读出版 4B](https://huggingface.co/quincyqiang/chinese-decision-4b)
+
+## 最新动态
+
+- 🏆 **2026-11-12**：[Jev Decision Index 0.4.1](https://huggingface.co/spaces/multimodalart/jev-decision-index) 榜单出分。Full score **53.96**，在 147 个 4.9B 以下的提交中排**第 4**（不计参考模型 Jev 1.14），与 Cerno 4B v1.2（53.88）并列总榜第 19 档；排在前面的三个 4B 模型都是全量微调，本模型是该档最高的 LoRA / 读出头方案。
+- 📄 **2026-11-06**：系列技术报告 [arXiv:2610.23170](https://arxiv.org/abs/2610.23170) 更新到 v3，覆盖字母读出的纯决策模型与统一模型；本指针读出模型不在报告范围内。
 
 ## 结构
 
@@ -31,6 +36,21 @@ library_name: transformers
 - **双向提示**：全注意力层在提示内部双向可见（线性注意力层保持因果），候选项能互相“看到”。
 - **联合提问**：同一状态下的多个问题放在一条序列里，一次前向全部作答。
 - **校准**：导出时在独立校准划分上拟合温度 T = 1.538（`decision_config.json`）。
+
+## Decision Index 0.4.1 榜单
+
+榜单按 Full score 排名：与 37 个公开基准考同类技能的私有题，加上一组新领域的私有任务，均由榜单方在 1 × NVIDIA RTX PRO 6000 上复测（2026-11-11 更新，共 297 个模型）。
+
+| 指标 | 分数 |
+|---|---:|
+| **Full score** | **53.96** |
+| 私有题：同类技能 | 56.32 |
+| 私有题：新领域 | 39.18 |
+| 公开题集 0.3 | 61.69 |
+| 总榜名次 | 第 19 档（与 Cerno 4B v1.2 并列） |
+| 4.9B 以下（147 个提交） | **第 4**（不计参考模型 Jev 1.14） |
+
+同档前三：KnowLine 4B Gen5.5（55.99）、StartLux-Decision v1.1 4B（54.80）、Perplexity Decider Flash v1.2 (4B)（54.29），均为全量微调。新领域私有任务（39.18）是与公开题集分数拉开差距的主要原因。榜单方用本仓库的服务代码复跑提交结果，831 条抽查的决策一致率为 99.60%（门槛 98.5%）。
 
 ## Decision Index 0.3（公开题集）
 
