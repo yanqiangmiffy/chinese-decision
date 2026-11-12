@@ -19,6 +19,11 @@ scripts/serve.py，两者的接口和返回格式一致。
 所有前向都走同一个动态批处理队列：并发请求在几毫秒的窗口内自动合批，按 token 预算切成
 micro-batch，GPU 上同一时刻只有一个前向。提示词编译器直接复用本仓库的 decision 包，
 训练、评测、服务三者输入完全一致。
+
+三代模型都能直接加载，读出方式由模型目录的 decision_config.json 决定：
+  letters   chinese-decision-*b、chinese-decision-unified-*：A-Z 字母的 next-token logits，最多 26 个候选
+  pointer   chinese-decision-pointer-*：候选标记对决策标记打分，最多 POINTER_MAX_OPTIONS 个候选
+（unified 模型的抽取头这里不用，抽取接口见 scripts/serve_unified.py。）
 """
 
 import argparse
@@ -44,7 +49,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from decision.serving.api import build_answer
 from decision.modeling import DecisionModel
-from decision.processing import LETTERS, PROMPT_VERSION, DecisionProcessor, compile_prompt, options_for
+from decision.processing import DecisionProcessor, option_code
 from decision.serving.tournament import MAX_CANDIDATES as MAX_TOURNAMENT_CANDIDATES
 from decision.serving.tournament import from_request as tournament_from
 from decision.utils import model_name_for
@@ -55,6 +60,8 @@ MAX_BATCH_REQUESTS = 512
 MAX_BATCH_QUESTIONS = 4096
 PAD_MULTIPLE = 64  # 与 DecisionProcessor.pad_decisions 的 pad_to_multiple_of 一致
 IDLE_RELEASE_SECONDS = 20  # 空闲多久后释放缓存的显存
+# 前向需要的编码字段：字母读出只有 input_ids，pointer 读出还有双向区间和每个问题的标记位置
+MODEL_INPUTS = ("input_ids", "span", "questions")
 
 
 def now_iso():
@@ -78,10 +85,14 @@ class Checkpoint:
     def __init__(self, base, adapter, device):
         started = time.perf_counter()
         self.base, self.adapter = str(base), str(adapter) if adapter else None
-        self.processor = DecisionProcessor.from_pretrained(base)
-        self.tokenizer = self.processor.tokenizer
         self.model = DecisionModel.from_pretrained(base, adapter=adapter, device=device).eval()
+        # 用加载后模型的配置而不是 base 的：带 pointer_head.pt 的 adapter 会把读出换成 pointer
+        self.processor = DecisionProcessor(DecisionProcessor.from_pretrained(base).tokenizer, self.model.config)
+        self.tokenizer = self.processor.tokenizer
         self.letters = self.model.letter_tensor(self.processor)
+        self.readout = self.model.config.readout
+        self.prompt_version = self.model.config.prompt_version
+        self.max_options = self.processor.max_options
         config = read_json(Path(base) / "decision_config.json", {}) or {}
         self.model_name = model_name_for(base, config)
         self.temperature = float(config.get("temperature", 1.0))
@@ -97,7 +108,8 @@ class Checkpoint:
         self.load_seconds = time.perf_counter() - started
 
     def describe(self):
-        return {"base": self.base, "adapter": self.adapter, "step": self.selection.get("step"),
+        return {"base": self.base, "adapter": self.adapter, "readout": self.readout,
+                "prompt_version": self.prompt_version, "step": self.selection.get("step"),
                 "selection_metric": self.selection.get("metric"), "selection_value": self.selection.get("value"),
                 "temperature": self.temperature, "calibrated": self.calibrated, "max_length": self.max_length,
                 "loaded_at": self.loaded_at, "load_seconds": round(self.load_seconds, 2)}
@@ -125,7 +137,8 @@ class Engine:
 
     # ---------------------------------------------------------------- 提交与统计
     def submit(self, items):
-        """items: [{"input_ids": [...], "k": 候选数}]，返回 Future → 每个 item 的候选 logits 列表。"""
+        """items: [{"input_ids": [...], (pointer: "span", "questions"), "k": 候选数}]（见 model_input），
+        返回 Future → 每个 item 的候选 logits 列表。"""
         future = Future()
         self.queue.put((items, future))
         return future
@@ -201,7 +214,8 @@ class Engine:
 
     def _forward(self, checkpoint, flat, chunk):
         started = time.perf_counter()
-        batch = [{"input_ids": flat[i][2]["input_ids"], "target": [0.0] * flat[i][2]["k"]} for i in chunk]
+        batch = [{**{key: value for key, value in flat[i][2].items() if key != "k"}, "target": [0.0] * flat[i][2]["k"]}
+                 for i in chunk]
         logits, _ = checkpoint.model.score_decisions(batch, checkpoint.processor, checkpoint.letters)
         logits = logits.cpu()
         elapsed = 1000 * (time.perf_counter() - started)
@@ -262,20 +276,31 @@ def compile_request(checkpoint, body):
 
 
 def compile_questions(checkpoint, state, questions):
-    """编译同一个 state 下的多个问题（不限题数），返回 [(name, question, options, input_ids, prompt)]。"""
+    """编译同一个 state 下的多个问题（不限题数），返回 [(name, question, options, input_ids, item)]。
+
+    item 是按模型读出方式编码的输入（DecisionProcessor.encode_question）；超长直接报错，不截断。
+    """
     compiled = []
     for name, question in questions.items():
         try:
-            options = options_for(question)
-            prompt = compile_prompt(checkpoint.tokenizer, state, question["instructions"], options)
+            item = checkpoint.processor.encode_question(state, question)
         except (KeyError, TypeError, ValueError) as exc:
             raise RequestError(f"question {name}: {exc}") from exc
-        ids = checkpoint.tokenizer.encode(prompt, add_special_tokens=False)
-        if len(ids) > checkpoint.max_length:
-            raise RequestError(f"question {name}: input has {len(ids)} tokens; limit {checkpoint.max_length}; "
-                               "input was not truncated")
-        compiled.append((name, question, options, ids, prompt))
+        compiled.append((name, question, item["options"], item["input_ids"], item))
     return compiled
+
+
+def model_input(compiled_question):
+    """一个编译好的问题交给 Engine 的输入：前向需要的编码字段加候选数 k。"""
+    _, _, options, _, item = compiled_question
+    return {**{key: item[key] for key in MODEL_INPUTS if key in item}, "k": len(options)}
+
+
+def prompt_text(checkpoint, state, question, item):
+    """/v1/compile 展示的提示词：字母读出是聊天模板文本，pointer 读出是整段序列解码（含标记）。"""
+    if checkpoint.readout == "pointer":
+        return checkpoint.tokenizer.decode(item["input_ids"])
+    return checkpoint.processor.build_prompt(state, question["instructions"], item["options"])
 
 
 def probabilities_for(checkpoint, logits):
@@ -357,7 +382,8 @@ def gpu_info():
 
 
 def create_app(args):
-    checkpoint = Checkpoint(args.base, args.adapter, "cuda")
+    args.device = getattr(args, "device", "cuda")  # callers that build their own Namespace predate --device
+    checkpoint = Checkpoint(args.base, args.adapter, args.device)
     engine = Engine(checkpoint, args.token_budget, args.max_batch, args.max_wait_ms)
     reload_lock = threading.Lock()
 
@@ -388,7 +414,7 @@ def create_app(args):
         except RequestError as exc:
             raise HTTPException(422, str(exc)) from exc
         engine.compile_ms.append(1000 * (time.perf_counter() - started))
-        logits = await asyncio.wrap_future(engine.submit([{"input_ids": c[3], "k": len(c[2])} for c in compiled]))
+        logits = await asyncio.wrap_future(engine.submit([model_input(c) for c in compiled]))
         latency = 1000 * (time.perf_counter() - started)
         response = make_response(current, compiled, logits, latency, debug)
         engine.record(latency, len(compiled), response["usage"]["input_tokens"])
@@ -397,8 +423,9 @@ def create_app(args):
     @app.get("/health")
     def health():
         current = engine.checkpoint
-        return {"status": "ok", "model": current.model_name, "temperature": current.temperature,
-                "calibrated": current.calibrated, "step": current.selection.get("step")}
+        return {"status": "ok", "model": current.model_name, "readout": current.readout,
+                "temperature": current.temperature, "calibrated": current.calibrated,
+                "step": current.selection.get("step")}
 
     @app.post("/api/alpha/decisions")
     @app.post("/v1/systemone")
@@ -431,7 +458,7 @@ def create_app(args):
         total = sum(len(c) for c in compiled if not isinstance(c, Exception))
         if total > MAX_BATCH_QUESTIONS:
             raise HTTPException(422, f"at most {MAX_BATCH_QUESTIONS} questions per batch")
-        items = [{"input_ids": q[3], "k": len(q[2])} for c in compiled if not isinstance(c, Exception) for q in c]
+        items = [model_input(q) for c in compiled if not isinstance(c, Exception) for q in c]
         logits = await asyncio.wrap_future(engine.submit(items)) if items else []
         latency = 1000 * (time.perf_counter() - started)
         results, cursor, tokens = [], 0, 0
@@ -465,7 +492,7 @@ def create_app(args):
             except RequestError as exc:
                 raise HTTPException(422, str(exc)) from exc
             tokens += sum(len(c[3]) for c in compiled)
-            logits = await asyncio.wrap_future(engine.submit([{"input_ids": c[3], "k": len(c[2])} for c in compiled]))
+            logits = await asyncio.wrap_future(engine.submit([model_input(c) for c in compiled]))
             match.record([probabilities_for(current, row) for row in logits])
         latency = 1000 * (time.perf_counter() - started)
         engine.record(latency, match.decisions, tokens)
@@ -479,17 +506,19 @@ def create_app(args):
             compiled = await asyncio.to_thread(compile_request, current, body)
         except RequestError as exc:
             raise HTTPException(422, str(exc)) from exc
-        return {"prompt_version": PROMPT_VERSION, "questions": {
-            name: {"prompt": prompt, "input_tokens": len(ids),
-                   "options": [{"letter": LETTERS[i], "key": k, "description": d} for i, (k, d) in enumerate(options)]}
-            for name, _, options, ids, prompt in compiled}}
+        # option_code(i) 在 26 以内就是 LETTERS[i]；pointer 模型往后是 AA、AB……
+        return {"prompt_version": current.prompt_version, "readout": current.readout, "questions": {
+            name: {"prompt": prompt_text(current, body["state"], question, item), "input_tokens": len(ids),
+                   "options": [{"letter": option_code(i), "key": k, "description": d} for i, (k, d) in enumerate(options)]}
+            for name, question, options, ids, item in compiled}}
 
     @app.get("/v1/info")
     def info():
         current = engine.checkpoint
-        return {"model": current.model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
+        return {"model": current.model_name, "version": app.version, "prompt_version": current.prompt_version,
+                "readout": current.readout,
                 "limits": {"max_length": current.max_length, "max_questions": MAX_QUESTIONS,
-                           "max_candidates": len(LETTERS), "max_batch_requests": MAX_BATCH_REQUESTS,
+                           "max_candidates": current.max_options, "max_batch_requests": MAX_BATCH_REQUESTS,
                            "max_tournament_candidates": MAX_TOURNAMENT_CANDIDATES},
                 "checkpoint": current.describe(), "validation": current.validation,
                 "engine": {"token_budget": engine.token_budget, "max_batch": engine.max_batch,
@@ -516,7 +545,13 @@ def create_app(args):
             target = await asyncio.to_thread(snapshot_best, args.run_dir, args.snapshots)
             if engine.checkpoint.adapter == str(target):
                 return {"reloaded": False, "checkpoint": engine.checkpoint.describe()}
-            fresh = await asyncio.to_thread(Checkpoint, args.base, target, "cuda")
+            fresh = await asyncio.to_thread(Checkpoint, args.base, target, args.device)
+            if fresh.readout != engine.checkpoint.readout:
+                # 排队中的请求是按旧读出方式编码的：换读出方式要重启服务
+                message = (f"checkpoint {target} reads decisions by {fresh.readout}, the server by "
+                           f"{engine.checkpoint.readout}; restart the server to switch readouts")
+                del fresh
+                raise HTTPException(409, message)
             await asyncio.to_thread(engine.swap, fresh)
             return {"reloaded": True, "checkpoint": fresh.describe()}
         except RuntimeError as exc:
@@ -534,6 +569,7 @@ def main():
     parser.add_argument("--run-dir", help="训练目录（只读）：提供训练进度和热更新")
     parser.add_argument("--snapshots", default="snapshots", help="热更新时 best 快照的存放目录")
     parser.add_argument("--epoch-examples", type=int, default=13_048_000)
+    parser.add_argument("--device", default="cuda", help="推理设备（调试可用 cpu）")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8003)
     parser.add_argument("--token-budget", type=int, default=65536, help="单个 micro-batch padding 后的 token 上限")

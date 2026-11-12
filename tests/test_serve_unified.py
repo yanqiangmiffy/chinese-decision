@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from decision.configuration import LETTERS, PROMPT_VERSION, DecisionConfig
 from decision.processing import options_for
 
 from fastapi.testclient import TestClient
@@ -16,7 +17,8 @@ QUESTION = {"type": "choice", "instructions": "选哪个？", "criteria": {"A": 
 
 def client(can_extract=True):
     pipe = Mock(can_extract=can_extract)
-    pipe.model = SimpleNamespace(config=SimpleNamespace(temperature=1.1, max_length=16384))
+    pipe.model = SimpleNamespace(config=DecisionConfig(temperature=1.1))
+    pipe.processor = FakeProcessor()
     pipe.decide.return_value = {"q": {"A": 0.8, "B": 0.2}}
     pipe.extract.return_value = [{"text": "张三", "label": "人名", "start": 0, "end": 2, "score": 0.9}]
     pipe.decide_and_extract.return_value = (pipe.decide.return_value, pipe.extract.return_value)
@@ -25,6 +27,8 @@ def client(can_extract=True):
 
 class FakeProcessor:
     """Encodes a question into ids whose count is the length of its instructions."""
+
+    max_options = len(LETTERS)
 
     def encode_question(self, state, question):
         options = options_for(question)
@@ -40,7 +44,7 @@ class FakePipe:
 
     can_extract = True
     processor = FakeProcessor()
-    model = SimpleNamespace(config=SimpleNamespace(temperature=1.0, max_length=16384))
+    model = SimpleNamespace(config=DecisionConfig())
 
     def candidate_logits(self, items, batch_size=128, token_budget=32768):
         return [[2.0] + [0.0] * (len(item["options"]) - 1) for item in items]
@@ -93,6 +97,7 @@ class ServeGpuApiTests(unittest.TestCase):
         question = out["questions"]["q"]
         self.assertEqual((question["prompt"], question["input_tokens"]), ("s|选哪个？|A,B", 4))
         self.assertEqual([o["letter"] for o in question["options"]], ["A", "B"])
+        self.assertEqual((out["prompt_version"], out["readout"]), (PROMPT_VERSION, "letters"))
 
     def test_info_and_health_carry_what_studio_reads(self):
         http = gpu_style()

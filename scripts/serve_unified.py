@@ -1,4 +1,9 @@
-"""HTTP server for a unified model directory: decisions and span extraction from one set of weights.
+"""HTTP server for a model directory: decisions, and span extraction when the model has a span head.
+
+Every generation loads: decision-only models (chinese-decision-*b), unified models with a span head
+(chinese-decision-unified-*) and pointer models (chinese-decision-pointer-*, candidates read from markers
+instead of A-Z letters, so a question is not limited to 26 candidates). The readout comes from the
+directory's decision_config.json; /v1/info and /health report it.
 
     CUDA_VISIBLE_DEVICES=2 python scripts/serve_unified.py --model runs/cj-ie-0.8b-from-base/model --port 8011
 
@@ -36,9 +41,8 @@ import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from decision.configuration import LETTERS, PROMPT_VERSION
 from decision.pipeline import DecisionPipeline
-from decision.processing import options_for
+from decision.processing import option_code, options_for
 from decision.serving.api import build_answer
 from decision.serving.backends import candidate_probabilities
 from decision.serving.tournament import MAX_CANDIDATES
@@ -117,6 +121,10 @@ def create_app(pipe, model_name="decision", meta=None):
 
     def temperature():
         return float(pipe.model.config.temperature)
+
+    def readout():
+        """`"letters"` (A-Z next-token logits) or `"pointer"` (candidate markers), from the model's config."""
+        return pipe.model.config.readout
 
     def run(kind, work, status=400):
         try:
@@ -208,12 +216,18 @@ def create_app(pipe, model_name="decision", meta=None):
         return {"model": model_name, **match.result(), "usage": {"input_tokens": tokens, "output_tokens": 0},
                 "decisions": match.decisions}
 
+    def prompt_text(state, question, item):
+        """The letter readout's chat prompt, or the decoded pointer sequence (markers included)."""
+        if readout() == "pointer":
+            return pipe.processor.tokenizer.decode(item["input_ids"])
+        return pipe.processor.build_prompt(state, question["instructions"], item["options"])
+
     def compile_only(body):
         encoded = encode_request(body)
-        return {"prompt_version": PROMPT_VERSION, "questions": {
-            name: {"prompt": pipe.processor.build_prompt(body["state"], question["instructions"], item["options"]),
-                   "input_tokens": len(item["input_ids"]),
-                   "options": [{"letter": LETTERS[i], "key": key, "description": description}
+        # option_code(i) is LETTERS[i] below 26; pointer models go on with AA, AB, ...
+        return {"prompt_version": pipe.model.config.prompt_version, "readout": readout(), "questions": {
+            name: {"prompt": prompt_text(body["state"], question, item), "input_tokens": len(item["input_ids"]),
+                   "options": [{"letter": option_code(i), "key": key, "description": description}
                                for i, (key, description) in enumerate(item["options"])]}
             for name, question, item in encoded}}
 
@@ -237,7 +251,7 @@ def create_app(pipe, model_name="decision", meta=None):
     def answers_for(questions, probabilities):
         answers = {}
         for name, question in questions.items():
-            options = options_for(question)
+            options = options_for(question, pipe.processor.max_options)
             answers[name] = build_answer(question["type"], options, [probabilities[name][key] for key, _ in options])
         return answers
 
@@ -264,15 +278,17 @@ def create_app(pipe, model_name="decision", meta=None):
     # ------------------------------------------------------------------ status
     @app.get("/health")
     def health():
-        return {"status": "ok", "model": model_name, "temperature": temperature(),
+        return {"status": "ok", "model": model_name, "readout": readout(), "temperature": temperature(),
                 "calibrated": meta.get("calibrated", False), "step": meta.get("step"), "can_extract": pipe.can_extract}
 
     @app.get("/v1/info")
     def info():
         config = pipe.model.config
-        return {"model": model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
-                "can_extract": pipe.can_extract, "temperature": temperature(), "max_length": config.max_length,
-                "limits": {"max_length": config.max_length, "max_questions": MAX_QUESTIONS, "max_candidates": len(LETTERS),
+        return {"model": model_name, "version": app.version, "prompt_version": config.prompt_version,
+                "readout": readout(), "can_extract": pipe.can_extract, "temperature": temperature(),
+                "max_length": config.max_length,
+                "limits": {"max_length": config.max_length, "max_questions": MAX_QUESTIONS,
+                           "max_candidates": pipe.processor.max_options,
                            "max_batch_requests": MAX_BATCH_REQUESTS, "max_tournament_candidates": MAX_CANDIDATES},
                 "checkpoint": {"base": meta.get("base"), "adapter": None, "step": meta.get("step"),
                                "selection_metric": meta.get("selection_metric"),

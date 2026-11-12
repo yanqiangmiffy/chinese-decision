@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from decision.configuration import DecisionConfig
 from decision.serving.tournament import MAX_CANDIDATES, from_request
 from scripts import serve, serve_gpu
 
@@ -166,8 +167,10 @@ class TournamentRouteTests(unittest.TestCase):
         with patch("scripts.serve.GGUFBackend", PromptBackend):
             cpu = serve.create_app("missing-config", backend="gguf", gguf="mock.gguf")
         processor = MagicMock(tokenizer=Tokenizer())
+        model = MagicMock(config=DecisionConfig())   # a letters model: the checkpoint reads its readout from config
+        model.eval.return_value = model
         with patch("scripts.serve_gpu.DecisionProcessor.from_pretrained", return_value=processor), \
-             patch("scripts.serve_gpu.DecisionModel.from_pretrained", return_value=MagicMock()), \
+             patch("scripts.serve_gpu.DecisionModel.from_pretrained", return_value=model), \
              patch("scripts.serve_gpu.Engine", InlineEngine):
             gpu = serve_gpu.create_app(args)
         return {"cpu": TestClient(cpu), "gpu": TestClient(gpu)}
