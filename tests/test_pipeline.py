@@ -128,7 +128,7 @@ class DecideAndExtractTests(unittest.TestCase):
             "input_ids": [0] * decision_length, "options": [("A", "甲"), ("B", "乙")]}
         pipe.processor.encode_extraction.return_value = {"input_ids": [0] * row_length}
         pipe.processor.decode_spans.return_value = [(0, 1, "人名", 0.9)]
-        pipe.model = mock.Mock(config=SimpleNamespace(temperature=1.0, extraction=None))
+        pipe.model = mock.Mock(config=SimpleNamespace(temperature=1.0, extraction=None), pointer_head=None)
         pipe.model.joint_readouts.side_effect = lambda decisions, *_: (torch.tensor([[2.0, 0.0]] * len(decisions)), None)
         pipe.model.predict_spans.return_value = [[(0, 1, "人名", 0.9)]]
         pipe.candidate_logits = mock.Mock(side_effect=lambda items, **_: [[2.0, 0.0]] * len(items))

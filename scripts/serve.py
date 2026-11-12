@@ -106,7 +106,8 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
     max_length = config.get("max_length", MAX_LENGTH)
     candidate_probabilities([0., 0.], temperature)
     pointer = "pointer" in config
-    if config.get("prompt_version", PROMPT_VERSION) != (POINTER_PROMPT_VERSION if pointer else PROMPT_VERSION):
+    prompt_version = POINTER_PROMPT_VERSION if pointer else PROMPT_VERSION
+    if config.get("prompt_version", PROMPT_VERSION) != prompt_version:
         raise ValueError("saved model uses a different prompt compiler")
     if pointer and backend != "transformers":
         raise ValueError("pointer-head models are served by the transformers backend")
@@ -297,7 +298,7 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
             compiled = compile_request(body)
         except RequestError as exc:
             raise HTTPException(422, str(exc)) from exc
-        return {"prompt_version": PROMPT_VERSION, "questions": {
+        return {"prompt_version": prompt_version, "readout": "pointer" if pointer else "letters", "questions": {
             name: {"prompt": prompt, "input_tokens": len(ids),
                    "options": [{"letter": option_code(i) if pointer else LETTERS[i], "key": key,
                                 "description": description}
@@ -306,7 +307,8 @@ def create_app(base, adapter=None, *, backend="transformers", gguf=None, device=
 
     @app.get("/v1/info")
     def info():
-        return {"model": model_name, "version": app.version, "prompt_version": PROMPT_VERSION,
+        return {"model": model_name, "version": app.version, "prompt_version": prompt_version,
+                "readout": "pointer" if pointer else "letters",
                 "limits": {"max_length": max_length, "max_questions": MAX_QUESTIONS,
                            "max_candidates": max_options, "max_batch_requests": MAX_BATCH_REQUESTS,
                            "max_tournament_candidates": MAX_TOURNAMENT_CANDIDATES},

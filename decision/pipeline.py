@@ -111,6 +111,9 @@ class DecisionPipeline:
         decision to the span row's length (the text twice, with the echo), so past `joint_tokens` the
         questions run batched in one pass and the span row in another. On an A800 with the 2B model a
         combined request takes ~50 ms instead of ~97 ms at 100 characters, and breaks even near 1,200.
+
+        A pointer model reads decisions from its own sequence layout and bidirectional prompt mask, which a
+        span row cannot share, so its questions and span row always run in separate passes.
         """
         if not self.can_extract:
             raise ValueError("this model has no span head; it answers decisions only")
@@ -119,7 +122,7 @@ class DecisionPipeline:
         if row is None:
             raise ValueError("input longer than the extraction encoder's max length")
         width = -(-max(len(item["input_ids"]) for item in [row, *items]) // PAD_MULTIPLE) * PAD_MULTIPLE
-        joint = joint_tokens // width - 1
+        joint = joint_tokens // width - 1 if self.model.pointer_head is None else 0
         if joint >= 1:
             logits, utilities = self.model.joint_readouts(items[:joint], [row], self.processor, self.letters)
             logits = logits.cpu().tolist() + self.candidate_logits(items[joint:], token_budget=token_budget)
